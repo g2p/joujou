@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.79"
 bpaf = "0.9"
+natord = "1.0.9"
 rust_cast = "0.18"
+walkdir = "2.4.0"
 
 [patch.crates-io]
 rust_cast.git = "https://github.com/112RG/rust-cast.git"
