@@ -1,0 +1,11 @@
+[package]
+name = "joujou"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bpaf = "0.9"
+rust_cast = "0.18"
+
+[patch.crates-io]
+rust_cast.git = "https://github.com/112RG/rust-cast.git"
