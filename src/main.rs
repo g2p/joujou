@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use axum::extract;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum_extra::headers::Range;
 use axum_extra::TypedHeader;
 use axum_range::{KnownSize, Ranged};
-use http::StatusCode;
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use rust_cast::channels::media::{Media, MediaQueue, QueueItem, StreamType};
 use rust_cast::channels::receiver::CastDeviceApp;
