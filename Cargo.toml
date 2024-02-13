@@ -5,10 +5,22 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
+axum = { version = "0.7.4", default-features = false, features = ["tokio", "http1", "http2"] }
+axum-extra = { version = "0.9.2", features = ["typed-header"] }
+axum-range = "0.4.0"
 bpaf = "0.9"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+http = "1.0.0"
+# mdns-sd uses if-addrs, but I dislike the way link-local is
+# enabled via feature flag, so I'm considering local-ip-address instead.
+#local-ip-address = "0.5.7"
+# Maybe consider an alternative, I don't need the channels
+mdns-sd = "0.10.4"
 natord = "1.0.9"
 rust_cast = "0.18"
+tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "fs"] }
 walkdir = "2.4.0"
 
 [patch.crates-io]
-rust_cast.git = "https://github.com/112RG/rust-cast.git"
+#rust_cast.git = "https://github.com/112RG/rust-cast.git"
+rust_cast.path = "../../azasypkin/rust-cast"
