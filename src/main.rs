@@ -134,7 +134,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
                 media: Media {
                     content_id: format!("http://{expose_addr}/{i}"),
                     stream_type: StreamType::Buffered,
-                    content_type: String::from("audio/flac"), // TODO: mime
+                    content_type: ent.mime.to_owned(),
                     metadata: ent
                         .metadata
                         .map(rust_cast::channels::media::Metadata::MusicTrack),

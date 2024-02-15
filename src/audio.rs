@@ -11,7 +11,7 @@ use symphonia::default::formats::{FlacReader, MpaReader, OggReader};
 #[derive(Debug, Clone)]
 pub struct AudioFile {
     pub path: PathBuf,
-    //pub mime: &'static str,
+    pub mime: &'static str,
     pub metadata: Option<MusicTrackMediaMetadata>,
 }
 
@@ -22,8 +22,13 @@ impl AudioFile {
     pub fn load_if_supported(path: PathBuf) -> anyhow::Result<Option<Self>> {
         let ext = path.extension().and_then(OsStr::to_str).unwrap_or_default();
         if let Some(ckind) = ContainerKind::from_ext(ext) {
+            let mime = ckind.mime();
             let metadata = read_metadata(&path, ckind)?;
-            Ok(Some(AudioFile { path, metadata }))
+            Ok(Some(AudioFile {
+                path,
+                mime,
+                metadata,
+            }))
         } else {
             Ok(None)
         }
@@ -83,6 +88,14 @@ impl ContainerKind {
             // mp4 metadata for aac? meh
             // wav? only if metadata can be made to work
             _ => None,
+        }
+    }
+
+    fn mime(&self) -> &'static str {
+        match self {
+            ContainerKind::Flac => "audio/flac",
+            ContainerKind::Ogg => "audio/ogg",
+            ContainerKind::Mp3 => "audio/mpeg",
         }
     }
 }
