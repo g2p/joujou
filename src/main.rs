@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ mod cli;
 const SERVICE_TYPE: &str = "_googlecast._tcp.local.";
 const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
-async fn play(path: &std::path::Path) -> anyhow::Result<()> {
+async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Result<()> {
     println!("path {}", path.display());
     // List music files beforehand, sort them appropriately,
     // build the queue/playlist.
@@ -67,6 +68,15 @@ async fn play(path: &std::path::Path) -> anyhow::Result<()> {
             }
         })
         .collect::<Result<_, _>>()?;
+    if entries.is_empty() {
+        anyhow::bail!("Found no playable entries");
+    }
+    // From 1-based (UI) to 0-based
+    let start_index: u16 = playlist_start.get() - 1;
+    if !(..entries.len()).contains(&start_index.into()) {
+        // greater than is accurate for the 1-based index
+        anyhow::bail!("Playlist start index greater than {}", entries.len());
+    }
     for entry in entries.iter() {
         println!("{}", entry.path().display());
     }
@@ -132,6 +142,7 @@ async fn play(path: &std::path::Path) -> anyhow::Result<()> {
                 },
             })
             .collect(),
+        start_index,
     };
     println!("Asking to play {media_queue:?}");
     device
@@ -214,6 +225,9 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
     let app = cli::parse_cli();
     match app.cmd {
-        cli::Command::Play { path } => play(&path).await,
+        cli::Command::Play {
+            path,
+            playlist_start,
+        } => play(&path, playlist_start).await,
     }
 }

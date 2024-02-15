@@ -4,13 +4,17 @@
 // higher-level than lexopt, less ad-hoc than clap_lex
 // https://github.com/rosetta-rs/argparse-rosetta-rs
 
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 
 use bpaf::{construct, OptionParser, Parser};
 
 #[derive(Debug, Clone)]
 pub enum Command {
-    Play { path: PathBuf },
+    Play {
+        path: PathBuf,
+        playlist_start: NonZeroU16,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -19,11 +23,17 @@ pub struct App {
 }
 
 fn play_command() -> OptionParser<Command> {
+    let playlist_start = bpaf::long("playlist-start")
+        .argument("INDEX")
+        .fallback(NonZeroU16::MIN);
     let path = bpaf::positional::<PathBuf>("path").help("Directory path to play");
 
-    construct!(Command::Play { path })
-        .to_options()
-        .descr("Cast a directory to chromecast audio")
+    construct!(Command::Play {
+        playlist_start,
+        path,
+    })
+    .to_options()
+    .descr("Cast a directory to chromecast audio")
 }
 
 fn parser() -> OptionParser<App> {
