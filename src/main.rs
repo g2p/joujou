@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::ffi::OsStr;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
@@ -13,8 +14,15 @@ use axum_extra::headers::Range;
 use axum_extra::TypedHeader;
 use axum_range::{KnownSize, Ranged};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
-use rust_cast::channels::media::{Media, MediaQueue, QueueItem, StreamType};
+use rust_cast::channels::media::{
+    Media, MediaQueue, MusicTrackMediaMetadata, QueueItem, StreamType,
+};
 use rust_cast::channels::receiver::CastDeviceApp;
+use symphonia::core::formats::FormatReader;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta;
+use symphonia::core::meta::MetadataReader as _;
+use symphonia::default::formats::{FlacReader, MpaReader, OggReader};
 use tokio::io::AsyncWriteExt;
 
 mod cli;
@@ -23,20 +31,128 @@ mod cli;
 const SERVICE_TYPE: &str = "_googlecast._tcp.local.";
 const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
-async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Result<()> {
-    // List music files beforehand, sort them appropriately,
-    // build the queue/playlist.
-    // natord could work with OsStr; human_sort can't.
-    // Using lossy for now anyway.
-    // uutils has src/uucore/src/lib/features/version_cmp.rs
-    // which mimics gnu version sort (with deliberate divergence due to bugs in GNU?)
-    // uutils doesn't handle non-unicode though.
-    // XXX Looking at walkdir source code (2.4.0), dirs are sorted
-    // unconditionally (in IntoIter::push which is called whenever a directory
-    // is recursed into), filter_entry is applied later.  So, for filtering music
-    // extensions, we could use Iterator::filter(), no point bothering with
-    // filter_entry.
-    let entries: Vec<_> = walkdir::WalkDir::new(path)
+#[derive(Debug, Clone)]
+struct AudioFile {
+    path: PathBuf,
+    //mime: &'static str,
+    metadata: Option<MusicTrackMediaMetadata>,
+}
+
+impl AudioFile {
+    /// Load known audio files (based on extension)
+    /// Ok(None) if not a known extension
+    /// Err if a known extension but parsing failed
+    fn load_if_supported(path: PathBuf) -> anyhow::Result<Option<Self>> {
+        let ext = path.extension().and_then(OsStr::to_str).unwrap_or_default();
+        if let Some(ckind) = ContainerKind::from_ext(ext) {
+            let metadata = read_metadata(&path, ckind)?;
+            Ok(Some(AudioFile { path, metadata }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn string_value(tag: &meta::Tag) -> Option<String> {
+    if let meta::Value::String(ref str) = tag.value {
+        Some(str.to_owned())
+    } else {
+        None
+    }
+}
+
+fn u32_value(tag: &meta::Tag) -> Option<u32> {
+    if let meta::Value::UnsignedInt(unum) = tag.value {
+        unum.try_into().ok()
+    } else {
+        None
+    }
+}
+
+fn convert_metadata(meta: &meta::MetadataRevision) -> MusicTrackMediaMetadata {
+    use symphonia::core::meta::StandardTagKey::*;
+    let mut rmeta = MusicTrackMediaMetadata::default();
+    for tag in meta.tags() {
+        let Some(stdtag) = tag.std_key else { continue };
+        match stdtag {
+            Album => rmeta.album_name = string_value(tag),
+            TrackTitle => rmeta.title = string_value(tag),
+            AlbumArtist => rmeta.album_artist = string_value(tag),
+            Artist => rmeta.artist = string_value(tag),
+            Composer => rmeta.composer = string_value(tag),
+            TrackNumber => rmeta.track_number = u32_value(tag),
+            DiscNumber => rmeta.disc_number = u32_value(tag),
+            ReleaseDate => rmeta.release_date = string_value(tag),
+            _ => (),
+        }
+    }
+
+    rmeta
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContainerKind {
+    Flac,
+    Ogg,
+    Mp3,
+}
+
+impl ContainerKind {
+    fn from_ext(ext: &str) -> Option<Self> {
+        match ext {
+            "flac" => Some(Self::Flac),
+            "ogg" | "oga" | "opus" => Some(Self::Ogg),
+            "mp3" => Some(Self::Mp3),
+            // mp4 metadata for aac? meh
+            // wav? only if metadata can be made to work
+            _ => None,
+        }
+    }
+}
+
+fn make_reader(
+    mss: MediaSourceStream,
+    container_kind: ContainerKind,
+) -> symphonia::core::errors::Result<Box<dyn FormatReader>> {
+    // Don't use the probe system, which currently ignores the extension hint
+    // build a reader directly
+    let fmt_opts = Default::default();
+    Ok(match container_kind {
+        ContainerKind::Flac => Box::new(FlacReader::try_new(mss, &fmt_opts)?),
+        ContainerKind::Ogg => Box::new(OggReader::try_new(mss, &fmt_opts)?),
+        ContainerKind::Mp3 => Box::new(MpaReader::try_new(mss, &fmt_opts)?),
+    })
+}
+
+fn read_metadata(
+    path: &std::path::Path,
+    container_kind: ContainerKind,
+) -> anyhow::Result<Option<MusicTrackMediaMetadata>> {
+    let src = std::fs::File::open(path)?;
+    // Default options for buffering
+    let mut mss = MediaSourceStream::new(Box::new(src), Default::default());
+    // For Mp3 metadata we just require id3v2, which is a container
+    // around the mp3 file.  id3v1 would be 128 bytes tacked on after
+    // the mp3 frames and immediately before EOF, can't really be
+    // detected unambiguously.
+    if container_kind == ContainerKind::Mp3 {
+        let mut mreader = symphonia_metadata::id3v2::Id3v2Reader::new(&Default::default());
+        let meta = mreader.read_all(&mut mss)?;
+        return Ok(Some(convert_metadata(&meta)));
+    }
+    let mut reader = make_reader(mss, container_kind)?;
+
+    let meta = reader.metadata();
+    let Some(meta) = meta.current() else {
+        return Ok(None);
+    };
+
+    Ok(Some(convert_metadata(meta)))
+}
+
+/// List music files, sort them appropriately, build the queue/playlist
+fn scan_to_playlist(path: &std::path::Path) -> anyhow::Result<Vec<AudioFile>> {
+    walkdir::WalkDir::new(path)
         .same_file_system(true)
         .sort_by(|a, b| {
             natord::compare(
@@ -52,21 +168,33 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
             };
             true
         })
-        .filter(|dent_r| {
-            if let Ok(dent) = dent_r {
-                // !dent.file_type().is_dir()
-                // With !is_dir:
-                // This could still be a symlink (to anything, broken, etc) or a block special, etc
-                // We'll count on the HTTP server to filter those out (at open time to prevent races).
-                // Though, maybe we don't want to open symlinks, in which case we could filter them
-                // out in both places.  If we want them, we could do a realpath whitelist.
-                dent.file_type().is_file()
-            } else {
+        .filter_map(|dent_r| {
+            match dent_r {
+                Ok(dent) => {
+                    // !dent.file_type().is_dir()
+                    // With !is_dir:
+                    // This could still be a symlink (to anything,
+                    // broken, etc) or a block special, etc
+                    // If we don't want symlinks we could filter them
+                    // out in both places we open files (for metadata
+                    // and from the http server).  If we want them, we
+                    // could do a realpath whitelist.
+                    if dent.file_type().is_file() {
+                        let path = dent.into_path();
+                        AudioFile::load_if_supported(path).transpose()
+                    } else {
+                        None
+                    }
+                }
                 // Always pass on errors, we'll use them to break out of iteration
-                true
+                Err(err) => Some(Err(err.into())),
             }
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<_, _>>()
+}
+
+async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Result<()> {
+    let entries = scan_to_playlist(path)?;
     if entries.is_empty() {
         anyhow::bail!("Found no playable entries");
     }
@@ -77,7 +205,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
         anyhow::bail!("Playlist start index greater than {}", entries.len());
     }
     for entry in entries.iter() {
-        println!("{}", entry.path().display());
+        println!("{}", entry.path.display());
     }
     // XXX I would like mdns-sd to tell on which interface services
     // are discovered, so I can expose sender only on these.
@@ -125,13 +253,17 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
         .launch_app(&CastDeviceApp::DefaultMediaReceiver)?;
     device.connection.connect(app.transport_id.as_str())?;
     let media_queue = MediaQueue {
-        items: (0..entries.len())
-            .map(|i| QueueItem {
+        items: entries
+            .into_iter()
+            .enumerate()
+            .map(|(i, ent)| QueueItem {
                 media: Media {
                     content_id: format!("http://{expose_addr}/{i}"),
                     stream_type: StreamType::Buffered,
                     content_type: String::from("audio/flac"), // TODO: mime
-                    metadata: None,
+                    metadata: ent
+                        .metadata
+                        .map(rust_cast::channels::media::Metadata::MusicTrack),
                     duration: None,
                 },
             })
@@ -168,12 +300,9 @@ async fn serve_one_track(
     Ok(Ranged::new(range, body))
 }
 
-async fn serve(
-    listener: tokio::net::TcpListener,
-    entries: Vec<walkdir::DirEntry>,
-) -> anyhow::Result<()> {
+async fn serve(listener: tokio::net::TcpListener, entries: Vec<AudioFile>) -> anyhow::Result<()> {
     let state = AppState {
-        served_files: entries.into_iter().map(|de| de.path().to_owned()).collect(),
+        served_files: entries.into_iter().map(|de| de.path).collect(),
     };
     let app = axum::Router::new()
         .route("/:track_id", axum::routing::get(serve_one_track))
