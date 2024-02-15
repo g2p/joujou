@@ -6,7 +6,7 @@ use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta;
 use symphonia::core::meta::MetadataReader as _;
-use symphonia::default::formats::{FlacReader, MpaReader, OggReader};
+use symphonia::default::formats::{FlacReader, OggReader};
 
 #[derive(Debug, Clone)]
 pub struct AudioFile {
@@ -100,20 +100,6 @@ impl ContainerKind {
     }
 }
 
-fn make_reader(
-    mss: MediaSourceStream,
-    container_kind: ContainerKind,
-) -> symphonia::core::errors::Result<Box<dyn FormatReader>> {
-    // Don't use the probe system, which currently ignores the extension hint
-    // build a reader directly
-    let fmt_opts = Default::default();
-    Ok(match container_kind {
-        ContainerKind::Flac => Box::new(FlacReader::try_new(mss, &fmt_opts)?),
-        ContainerKind::Ogg => Box::new(OggReader::try_new(mss, &fmt_opts)?),
-        ContainerKind::Mp3 => Box::new(MpaReader::try_new(mss, &fmt_opts)?),
-    })
-}
-
 fn read_metadata(
     path: &std::path::Path,
     container_kind: ContainerKind,
@@ -121,16 +107,23 @@ fn read_metadata(
     let src = std::fs::File::open(path)?;
     // Default options for buffering
     let mut mss = MediaSourceStream::new(Box::new(src), Default::default());
-    // For Mp3 metadata we just require id3v2, which is a container
-    // around the mp3 file.  id3v1 would be 128 bytes tacked on after
-    // the mp3 frames and immediately before EOF, can't really be
-    // detected unambiguously.
-    if container_kind == ContainerKind::Mp3 {
-        let mut mreader = symphonia_metadata::id3v2::Id3v2Reader::new(&Default::default());
-        let meta = mreader.read_all(&mut mss)?;
-        return Ok(Some(convert_metadata(&meta)));
+
+    let mut reader: Box<dyn FormatReader>;
+    match container_kind {
+        // For Mp3 metadata we just require id3v2, which is a container
+        // around the mp3 file.  id3v1 would be 128 bytes tacked on after
+        // the mp3 frames and immediately before EOF, can't really be
+        // detected unambiguously.
+        ContainerKind::Mp3 => {
+            let mut mreader = symphonia_metadata::id3v2::Id3v2Reader::new(&Default::default());
+            let meta = mreader.read_all(&mut mss)?;
+            return Ok(Some(convert_metadata(&meta)));
+        }
+        // Don't use the probe system, which currently ignores the extension hint
+        // build a reader directly
+        ContainerKind::Flac => reader = Box::new(FlacReader::try_new(mss, &Default::default())?),
+        ContainerKind::Ogg => reader = Box::new(OggReader::try_new(mss, &Default::default())?),
     }
-    let mut reader = make_reader(mss, container_kind)?;
 
     let meta = reader.metadata();
     let Some(meta) = meta.current() else {
