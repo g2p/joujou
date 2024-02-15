@@ -24,7 +24,6 @@ const SERVICE_TYPE: &str = "_googlecast._tcp.local.";
 const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
 async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Result<()> {
-    println!("path {}", path.display());
     // List music files beforehand, sort them appropriately,
     // build the queue/playlist.
     // natord could work with OsStr; human_sort can't.
@@ -86,7 +85,6 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     let Some((address, port)) = discover().await else {
         anyhow::bail!("Could not find Chromecast.");
     };
-    eprintln!("Here!");
     // XXX Could I access the socket and call socket2 local_addr
     // (libc getsockname)?  CastDevice builds the TcpStream
     // but does not expose it.
@@ -94,7 +92,6 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     let mut tcp1 = tokio::net::TcpStream::connect((address.as_str(), port)).await?;
     let local_addr = tcp1.local_addr()?;
     tcp1.shutdown().await?;
-    eprintln!("There!");
 
     // Rebuild with only the stuff we want
     // (we could also just clear port and v6 flow info)
@@ -118,7 +115,6 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     }
     let join_server = tokio::spawn(serve(listener, entries.clone()));
 
-    eprintln!("Prior!");
     device
         .connection
         .connect(DEFAULT_DESTINATION_ID.to_string())?;
@@ -127,9 +123,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     let app = device
         .receiver
         .launch_app(&CastDeviceApp::DefaultMediaReceiver)?;
-    eprintln!("Before!");
     device.connection.connect(app.transport_id.as_str())?;
-    eprintln!("After!");
     let media_queue = MediaQueue {
         items: (0..entries.len())
             .map(|i| QueueItem {
@@ -144,7 +138,6 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
             .collect(),
         start_index,
     };
-    println!("Asking to play {media_queue:?}");
     device
         .media
         .load_queue(app.transport_id, app.session_id, &media_queue)?;
@@ -222,6 +215,7 @@ async fn discover() -> Option<(String, u16)> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "logging")]
     env_logger::init();
     let app = cli::parse_cli();
     match app.cmd {

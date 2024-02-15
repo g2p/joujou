@@ -9,7 +9,7 @@ axum = { version = "0.7.4", default-features = false, features = ["tokio", "http
 axum-extra = { version = "0.9.2", features = ["typed-header"] }
 axum-range = "0.4.0"
 bpaf = "0.9"
-env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"], optional = true }
 # mdns-sd uses if-addrs, but I dislike the way link-local is
 # enabled via feature flag, so I'm considering local-ip-address instead.
 #local-ip-address = "0.5.7"
@@ -19,6 +19,9 @@ natord = "1.0.9"
 rust_cast = "0.18"
 tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "fs"] }
 walkdir = "2.4.0"
+
+[features]
+logging = ["dep:env_logger"]
 
 [patch.crates-io]
 #rust_cast.git = "https://github.com/112RG/rust-cast.git"
