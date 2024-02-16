@@ -19,7 +19,7 @@ pub struct Metadata {
 #[derive(Debug)]
 pub struct AudioFile {
     pub path: PathBuf,
-    pub mime: &'static str,
+    pub mime_type: &'static str,
     pub metadata: Option<Metadata>,
 }
 
@@ -30,11 +30,11 @@ impl AudioFile {
     pub fn load_if_supported(path: PathBuf) -> anyhow::Result<Option<Self>> {
         let ext = path.extension().and_then(OsStr::to_str).unwrap_or_default();
         if let Some(ckind) = ContainerKind::from_ext(ext) {
-            let mime = ckind.mime();
+            let mime_type = ckind.mime_type();
             let metadata = read_metadata(&path, ckind)?;
             Ok(Some(AudioFile {
                 path,
-                mime,
+                mime_type,
                 metadata,
             }))
         } else {
@@ -104,7 +104,7 @@ impl ContainerKind {
         }
     }
 
-    fn mime(&self) -> &'static str {
+    fn mime_type(&self) -> &'static str {
         match self {
             ContainerKind::Flac => "audio/flac",
             ContainerKind::Ogg => "audio/ogg",

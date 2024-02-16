@@ -127,9 +127,9 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
             .enumerate()
             .map(|(i, ent)| QueueItem {
                 media: Media {
-                    content_id: format!("http://{expose_addr}/{i}"),
+                    content_id: format!("http://{expose_addr}/track/{i}"),
                     stream_type: StreamType::Buffered,
-                    content_type: ent.mime.to_owned(),
+                    content_type: ent.mime_type.to_owned(),
                     metadata: ent
                         .metadata
                         .map(|m| rust_cast::channels::media::Metadata::MusicTrack(m.cast_metadata)),
