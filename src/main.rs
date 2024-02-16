@@ -64,7 +64,7 @@ fn scan_to_playlist(path: &std::path::Path) -> anyhow::Result<Vec<AudioFile>> {
 }
 
 async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Result<()> {
-    let entries = scan_to_playlist(path)?;
+    let mut entries = scan_to_playlist(path)?;
     if entries.is_empty() {
         anyhow::bail!("Found no playable entries");
     }
@@ -109,7 +109,8 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     if let SocketAddr::V6(ref mut v6) = expose_addr {
         v6.set_scope_id(0);
     }
-    let server = http::make_app(entries.as_slice());
+    let base = format!("http://{expose_addr}").parse().unwrap();
+    let server = http::make_app(entries.as_mut_slice(), &base);
     let join_server = tokio::spawn(axum::serve(listener, server).into_future());
 
     device
@@ -127,7 +128,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
             .enumerate()
             .map(|(i, ent)| QueueItem {
                 media: Media {
-                    content_id: format!("http://{expose_addr}/track/{i}"),
+                    content_id: http::base_with_path(&base, &format!("/track/{i}")).into(),
                     stream_type: StreamType::Buffered,
                     content_type: ent.mime_type.to_owned(),
                     metadata: ent
