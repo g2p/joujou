@@ -8,7 +8,7 @@ use symphonia::core::meta;
 use symphonia::core::meta::MetadataReader as _;
 use symphonia::default::formats::{FlacReader, OggReader};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Metadata {
     // in rust_cast format
     pub cast_metadata: MusicTrackMediaMetadata,
@@ -16,7 +16,7 @@ pub struct Metadata {
     pub visuals: Vec<meta::Visual>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AudioFile {
     pub path: PathBuf,
     pub mime: &'static str,

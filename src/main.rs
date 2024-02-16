@@ -1,17 +1,10 @@
 #![forbid(unsafe_code)]
 
+use std::future::IntoFuture;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
-use std::sync::Arc;
 
-use axum::extract;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum_extra::headers::Range;
-use axum_extra::TypedHeader;
-use axum_range::{KnownSize, Ranged};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use rust_cast::channels::media::{Media, MediaQueue, QueueItem, StreamType};
 use rust_cast::channels::receiver::CastDeviceApp;
@@ -19,6 +12,7 @@ use tokio::io::AsyncWriteExt;
 
 mod audio;
 mod cli;
+mod http;
 
 use audio::AudioFile;
 
@@ -115,8 +109,8 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     if let SocketAddr::V6(ref mut v6) = expose_addr {
         v6.set_scope_id(0);
     }
-    // XXX This clone is a bit heavy (visuals will be copied)
-    let join_server = tokio::spawn(serve(listener, entries.clone()));
+    let server = http::make_app(entries.as_slice());
+    let join_server = tokio::spawn(axum::serve(listener, server).into_future());
 
     device
         .connection
@@ -149,40 +143,6 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
         .media
         .load_queue(app.transport_id, app.session_id, &media_queue)?;
     join_server.await??;
-    Ok(())
-}
-
-struct AppState {
-    served_files: Vec<PathBuf>,
-}
-
-async fn serve_one_track(
-    extract::Path(track_id): extract::Path<u16>,
-    range: Option<TypedHeader<Range>>,
-    State(state): State<Arc<AppState>>,
-) -> Result<Ranged<KnownSize<tokio::fs::File>>, StatusCode> {
-    let path = state
-        .served_files
-        .get(usize::from(track_id))
-        .ok_or(StatusCode::NOT_FOUND)?;
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    let body = KnownSize::file(file)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    let range = range.map(|TypedHeader(range)| range);
-    Ok(Ranged::new(range, body))
-}
-
-async fn serve(listener: tokio::net::TcpListener, entries: Vec<AudioFile>) -> anyhow::Result<()> {
-    let state = AppState {
-        served_files: entries.into_iter().map(|de| de.path).collect(),
-    };
-    let app = axum::Router::new()
-        .route("/:track_id", axum::routing::get(serve_one_track))
-        .with_state(Arc::new(state));
-    axum::serve(listener, app).await?;
     Ok(())
 }
 
