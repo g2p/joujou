@@ -115,6 +115,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
     if let SocketAddr::V6(ref mut v6) = expose_addr {
         v6.set_scope_id(0);
     }
+    // XXX This clone is a bit heavy (visuals will be copied)
     let join_server = tokio::spawn(serve(listener, entries.clone()));
 
     device
@@ -137,7 +138,7 @@ async fn play(path: &std::path::Path, playlist_start: NonZeroU16) -> anyhow::Res
                     content_type: ent.mime.to_owned(),
                     metadata: ent
                         .metadata
-                        .map(rust_cast::channels::media::Metadata::MusicTrack),
+                        .map(|m| rust_cast::channels::media::Metadata::MusicTrack(m.cast_metadata)),
                     duration: None,
                 },
             })

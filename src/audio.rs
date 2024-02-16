@@ -9,10 +9,18 @@ use symphonia::core::meta::MetadataReader as _;
 use symphonia::default::formats::{FlacReader, OggReader};
 
 #[derive(Debug, Clone)]
+pub struct Metadata {
+    // in rust_cast format
+    pub cast_metadata: MusicTrackMediaMetadata,
+    // still in Symphonia format
+    pub visuals: Vec<meta::Visual>,
+}
+
+#[derive(Debug, Clone)]
 pub struct AudioFile {
     pub path: PathBuf,
     pub mime: &'static str,
-    pub metadata: Option<MusicTrackMediaMetadata>,
+    pub metadata: Option<Metadata>,
 }
 
 impl AudioFile {
@@ -51,25 +59,30 @@ fn u32_value(tag: &meta::Tag) -> Option<u32> {
     }
 }
 
-fn convert_metadata(meta: &meta::MetadataRevision) -> MusicTrackMediaMetadata {
+// converts tags to rust cast format, keeps visuals in Symphonia
+// format until a URL can be built to serve them
+fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
     use symphonia::core::meta::StandardTagKey::*;
-    let mut rmeta = MusicTrackMediaMetadata::default();
+    let mut cmeta = MusicTrackMediaMetadata::default();
     for tag in meta.tags() {
         let Some(stdtag) = tag.std_key else { continue };
         match stdtag {
-            Album => rmeta.album_name = string_value(tag),
-            TrackTitle => rmeta.title = string_value(tag),
-            AlbumArtist => rmeta.album_artist = string_value(tag),
-            Artist => rmeta.artist = string_value(tag),
-            Composer => rmeta.composer = string_value(tag),
-            TrackNumber => rmeta.track_number = u32_value(tag),
-            DiscNumber => rmeta.disc_number = u32_value(tag),
-            ReleaseDate => rmeta.release_date = string_value(tag),
+            Album => cmeta.album_name = string_value(tag),
+            TrackTitle => cmeta.title = string_value(tag),
+            AlbumArtist => cmeta.album_artist = string_value(tag),
+            Artist => cmeta.artist = string_value(tag),
+            Composer => cmeta.composer = string_value(tag),
+            TrackNumber => cmeta.track_number = u32_value(tag),
+            DiscNumber => cmeta.disc_number = u32_value(tag),
+            ReleaseDate => cmeta.release_date = string_value(tag),
             _ => (),
         }
     }
 
-    rmeta
+    Metadata {
+        cast_metadata: cmeta,
+        visuals: meta.visuals().to_vec(),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,7 +116,7 @@ impl ContainerKind {
 fn read_metadata(
     path: &std::path::Path,
     container_kind: ContainerKind,
-) -> anyhow::Result<Option<MusicTrackMediaMetadata>> {
+) -> anyhow::Result<Option<Metadata>> {
     let src = std::fs::File::open(path)?;
     // Default options for buffering
     let mut mss = MediaSourceStream::new(Box::new(src), Default::default());
