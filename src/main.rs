@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
 
+use rust_cast::channels::connection::ConnectionResponse;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{
     Media, MediaQueue, MediaResponse, PlayerState, QueueItem, StreamType,
@@ -157,7 +158,12 @@ async fn play(
                     device.heartbeat.pong().unwrap();
                 }
             }
-            Ok(ChannelMessage::Connection(response)) => log::debug!("[Connection] {:?}", response),
+            Ok(ChannelMessage::Connection(response)) => {
+                log::debug!("[Connection] {:?}", response);
+                if matches!(response, ConnectionResponse::Close) {
+                    break 'messages;
+                }
+            }
             Ok(ChannelMessage::Media(response)) => {
                 log::debug!("[Media] {:?}", response);
                 if let MediaResponse::Status(stat) = response {
