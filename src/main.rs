@@ -6,10 +6,13 @@ use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
 
 use rust_cast::channels::heartbeat::HeartbeatResponse;
-use rust_cast::channels::media::{Media, MediaQueue, QueueItem, StreamType};
+use rust_cast::channels::media::{
+    Media, MediaQueue, MediaResponse, PlayerState, QueueItem, StreamType,
+};
 use rust_cast::channels::receiver::CastDeviceApp;
 use rust_cast::ChannelMessage;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::oneshot;
 
 mod audio;
 mod cli;
@@ -108,7 +111,13 @@ async fn play(
     }
     let base = format!("http://{expose_addr}").parse().unwrap();
     let server = http::make_app(entries.as_mut_slice(), &base);
-    let join_server = tokio::spawn(axum::serve(listener, server).into_future());
+
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let join_server = tokio::spawn(
+        axum::serve(listener, server)
+            .with_graceful_shutdown(async { shutdown_rx.await.unwrap() })
+            .into_future(),
+    );
 
     device
         .connection
@@ -140,6 +149,44 @@ async fn play(
     device
         .media
         .load_queue(app.transport_id, app.session_id, &media_queue)?;
+    // This loop will get [Media] status entries
+    'messages: loop {
+        match device.receive() {
+            Ok(ChannelMessage::Heartbeat(response)) => {
+                if let HeartbeatResponse::Ping = response {
+                    device.heartbeat.pong().unwrap();
+                }
+            }
+            Ok(ChannelMessage::Connection(response)) => log::debug!("[Connection] {:?}", response),
+            Ok(ChannelMessage::Media(response)) => {
+                log::debug!("[Media] {:?}", response);
+                if let MediaResponse::Status(stat) = response {
+                    for stat_ent in stat.entries {
+                        // The player became idle, and not because it hasn't started yet
+                        // Either it's Finished (ran out of playlist), or the user explicitly stopped it,
+                        // or some fatal error happened.  Either way, time to exit.
+                        if let Some(_reason) = stat_ent.idle_reason {
+                            assert!(matches!(stat_ent.player_state, PlayerState::Idle));
+                            // Added the missing impl
+                            assert_eq!(stat_ent.player_state, PlayerState::Idle);
+                            break 'messages;
+                        }
+                    }
+                }
+            }
+            Ok(ChannelMessage::Receiver(response)) => log::debug!("[Receiver] {:?}", response),
+            Ok(ChannelMessage::Raw(response)) => log::debug!(
+                "Support for the following message type is not yet supported: {:?}",
+                response
+            ),
+            Err(error) => {
+                log::error!("Error occurred while receiving message {}", error);
+                break 'messages;
+            }
+        }
+    }
+    log::debug!("Shutting down our HTTP server");
+    shutdown_tx.send(()).unwrap();
     join_server.await??;
     Ok(())
 }
@@ -160,6 +207,8 @@ async fn listen() -> anyhow::Result<()> {
         .connection
         .connect(DEFAULT_DESTINATION_ID.to_string())?;
     println!("Connected to device and {}", DEFAULT_DESTINATION_ID);
+    // This loop only seems to get [Receiver] status entries (not too useful)
+    // Presumably there is a way to join an existing session to know more?
     loop {
         match device.receive() {
             Ok(ChannelMessage::Heartbeat(response)) => {
@@ -167,7 +216,6 @@ async fn listen() -> anyhow::Result<()> {
                     device.heartbeat.pong().unwrap();
                 }
             }
-
             Ok(ChannelMessage::Connection(response)) => println!("[Connection] {:?}", response),
             Ok(ChannelMessage::Media(response)) => println!("[Media] {:?}", response),
             Ok(ChannelMessage::Receiver(response)) => println!("[Receiver] {:?}", response),
@@ -175,7 +223,6 @@ async fn listen() -> anyhow::Result<()> {
                 "Support for the following message type is not yet supported: {:?}",
                 response
             ),
-
             Err(error) => println!("Error occurred while receiving message {}", error),
         }
     }
