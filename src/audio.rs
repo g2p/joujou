@@ -59,21 +59,6 @@ fn u32_value(tag: &meta::Tag) -> Option<u32> {
     }
 }
 
-/*fn compare_visuals(v1: &meta::Visual, v2: &meta::Visual) -> Ordering {
-    // Make best lowest
-    match (v1.usage, v2.usage) {
-        (None, None) => Ordering::Equal,
-        (None, Some(_)) => Ordering::Greater,
-        (Some(_), None) => Ordering::Less,
-        (Some(u1), Some(u2)) => compare_visual_keys(u1, u2),
-    }
-}
-
-fn compare_visual_keys(u1: meta::StandardVisualKey, u2: meta::StandardVisualKey) -> Ordering {
-    // Make best lowest
-    todo!()
-}*/
-
 // converts tags to rust cast format, keeps visuals in Symphonia
 // format until a URL can be built to serve them
 fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
@@ -94,12 +79,6 @@ fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
         }
     }
 
-    // using min_by because it will return the first of equal elements
-    /*let visual = meta
-    .visuals()
-    .iter()
-    .min_by(|a, b| compare_visuals(*a, *b))
-    .cloned();*/
     // First seems good enough, ordering would require experimentation
     let visual = meta.visuals().first().cloned();
 
