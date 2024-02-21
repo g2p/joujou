@@ -148,9 +148,15 @@ async fn play(
             .collect(),
         start_index,
     };
-    device
+    let status = device
         .media
         .load_queue(app.transport_id, app.session_id, &media_queue)?;
+    log::debug!("Load status len {}", status.entries.len());
+    for stat_ent in status.entries.iter() {
+        log::debug!("Load status msid {}", stat_ent.media_session_id);
+        log::debug!("Load status entry {:?}", stat_ent);
+    }
+    let media_session_id = status.entries.first().unwrap().media_session_id;
     // This loop will get [Media] status entries
     'messages: loop {
         match device.receive() {
@@ -169,6 +175,9 @@ async fn play(
                 log::debug!("[Media] {:?}", response);
                 if let MediaResponse::Status(stat) = response {
                     for stat_ent in stat.entries {
+                        if stat_ent.media_session_id != media_session_id {
+                            continue;
+                        }
                         // The player became idle, and not because it hasn't started yet
                         // Either it's Finished (ran out of playlist), or the user explicitly stopped it,
                         // or some fatal error happened.  Either way, time to exit.
