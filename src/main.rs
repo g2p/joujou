@@ -5,8 +5,10 @@ use std::net::SocketAddr;
 use std::num::NonZeroU16;
 use std::os::unix::ffi::OsStrExt;
 
+use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{Media, MediaQueue, QueueItem, StreamType};
 use rust_cast::channels::receiver::CastDeviceApp;
+use rust_cast::ChannelMessage;
 use tokio::io::AsyncWriteExt;
 
 mod audio;
@@ -142,6 +144,43 @@ async fn play(
     Ok(())
 }
 
+async fn listen() -> anyhow::Result<()> {
+    let Some((remote_address, remote_port)) = net::discover().await else {
+        anyhow::bail!("Could not find Chromecast.");
+    };
+    // XXX Could I access the socket and call socket2 local_addr
+    // (libc getsockname)?  CastDevice builds the TcpStream
+    // but does not expose it.
+    let device = rust_cast::CastDevice::connect_without_host_verification(
+        remote_address.as_str(),
+        remote_port,
+    )?;
+    println!("Connecting to device and {}", DEFAULT_DESTINATION_ID);
+    device
+        .connection
+        .connect(DEFAULT_DESTINATION_ID.to_string())?;
+    println!("Connected to device and {}", DEFAULT_DESTINATION_ID);
+    loop {
+        match device.receive() {
+            Ok(ChannelMessage::Heartbeat(response)) => {
+                if let HeartbeatResponse::Ping = response {
+                    device.heartbeat.pong().unwrap();
+                }
+            }
+
+            Ok(ChannelMessage::Connection(response)) => println!("[Connection] {:?}", response),
+            Ok(ChannelMessage::Media(response)) => println!("[Media] {:?}", response),
+            Ok(ChannelMessage::Receiver(response)) => println!("[Receiver] {:?}", response),
+            Ok(ChannelMessage::Raw(response)) => println!(
+                "Support for the following message type is not yet supported: {:?}",
+                response
+            ),
+
+            Err(error) => println!("Error occurred while receiving message {}", error),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "logging")]
@@ -152,5 +191,6 @@ async fn main() -> anyhow::Result<()> {
             path,
             playlist_start,
         } => play(&path, playlist_start, &app.port).await,
+        cli::Command::Listen => listen().await,
     }
 }

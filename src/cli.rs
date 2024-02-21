@@ -18,6 +18,7 @@ pub enum Command {
         path: PathBuf,
         playlist_start: NonZeroU16,
     },
+    Listen,
 }
 
 #[derive(Debug, Clone)]
@@ -102,11 +103,20 @@ fn play_command() -> OptionParser<Command> {
     .descr("Cast a directory to chromecast audio")
 }
 
+fn listen_command() -> OptionParser<Command> {
+    bpaf::pure(Command::Listen)
+        .to_options()
+        .descr("Listen to events from the chromecast device")
+}
+
 fn parser() -> OptionParser<App> {
     // Subcommands
     let play_cmd = play_command()
         .command("play")
         .help("Cast a directory to chromecast audio");
+    let listen_cmd = listen_command()
+        .command("listen")
+        .help("Listen to events (playback…) from the chromecast device");
 
     let port = bpaf::long("port")
         .argument("PORT[:PORT]")
@@ -115,7 +125,7 @@ fn parser() -> OptionParser<App> {
             Please ensure your local network can access it.",
         )
         .fallback(PortOrRange::RandomPort);
-    let cmd = construct!([play_cmd]);
+    let cmd = construct!([play_cmd, listen_cmd]);
     construct!(App { port, cmd }).to_options()
 }
 
