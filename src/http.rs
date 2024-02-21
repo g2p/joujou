@@ -107,7 +107,8 @@ pub fn make_app(entries: &mut [crate::audio::AudioFile], base: &url::Url) -> axu
                 });
                 let mut url = base.clone();
                 url.set_path(&format!("/visual/{i}"));
-                meta.cast_metadata.images = vec![rust_cast::channels::media::Image::new(url.into())]
+                meta.cast_metadata.images =
+                    vec![rust_cast::channels::media::Image::new(url.into())];
             }
         }
     }

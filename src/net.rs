@@ -29,7 +29,7 @@ pub async fn bind(local_addr: &SocketAddr, port: &PortOrRange) -> std::io::Resul
         PortOrRange::Range(_range) => {
             let mut firsterr = None;
             // It's easier to implement IntoIterator on the enum itself
-            for port in port.clone().into_iter() {
+            for port in port.clone() {
                 listen_addr.set_port(port);
                 match tokio::net::TcpListener::bind(listen_addr).await {
                     Ok(listener) => return Ok(listener),

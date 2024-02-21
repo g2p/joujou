@@ -101,7 +101,7 @@ fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
     .min_by(|a, b| compare_visuals(*a, *b))
     .cloned();*/
     // First seems good enough, ordering would require experimentation
-    let visual = meta.visuals().get(0).cloned();
+    let visual = meta.visuals().first().cloned();
 
     Metadata {
         cast_metadata: cmeta,
@@ -128,7 +128,7 @@ impl ContainerKind {
         }
     }
 
-    fn mime_type(&self) -> &'static str {
+    fn mime_type(self) -> &'static str {
         match self {
             ContainerKind::Flac => "audio/flac",
             ContainerKind::Ogg => "audio/ogg",
