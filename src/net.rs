@@ -17,9 +17,6 @@ pub async fn bind(local_addr: &SocketAddr, port: &PortOrRange) -> std::io::Resul
         SocketAddr::V6(v6) => SocketAddr::V6(SocketAddrV6::new(*v6.ip(), 0, 0, v6.scope_id())),
     };
 
-    // TODO: Now that we can reuse ports (through the cli flag and tokio
-    // setting SO_REUSEPORT), should AppState and URLs include a UUID to
-    // distinguish playlists/sessions?
     match port {
         PortOrRange::RandomPort => tokio::net::TcpListener::bind(listen_addr).await,
         PortOrRange::SinglePort(port) => {

@@ -111,7 +111,8 @@ async fn play(
         v6.set_scope_id(0);
     }
     let base = format!("http://{expose_addr}").parse().unwrap();
-    let server = http::make_app(entries.as_mut_slice(), &base);
+    let uuid = uuid::Uuid::new_v4();
+    let server = http::make_app(uuid, entries.as_mut_slice(), &base);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let join_server = tokio::spawn(
@@ -135,7 +136,7 @@ async fn play(
             .enumerate()
             .map(|(i, ent)| QueueItem {
                 media: Media {
-                    content_id: http::base_with_path(&base, &format!("/track/{i}")).into(),
+                    content_id: http::base_with_path(&base, &format!("/{uuid}/track/{i}")).into(),
                     stream_type: StreamType::Buffered,
                     content_type: ent.mime_type.to_owned(),
                     metadata: ent

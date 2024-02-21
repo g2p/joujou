@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::headers::Range;
 use axum_extra::TypedHeader;
 use axum_range::{KnownSize, Ranged};
+use uuid::Uuid;
 
 #[derive(Debug)]
 enum ServedData {
@@ -59,17 +60,33 @@ impl ServedItem {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct AppState {
     tracks: Vec<ServedItem>,
     visuals: Vec<ServedItem>,
+    uuid: Uuid,
 }
 
+impl AppState {
+    fn new(uuid: Uuid) -> Self {
+        Self {
+            tracks: Vec::new(),
+            visuals: Vec::new(),
+            uuid,
+        }
+    }
+}
+
+// Uuid must implement serde::Deserialize for Path extraction to compile
+//#[axum::debug_handler]
 async fn serve_one_track(
-    extract::Path(track_id): extract::Path<u16>,
+    extract::Path((uuid, track_id)): extract::Path<(Uuid, u16)>,
     range: Option<TypedHeader<Range>>,
     extract::State(state): extract::State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    if uuid != state.uuid {
+        return Err(StatusCode::NOT_FOUND);
+    }
     let item = state
         .tracks
         .get(usize::from(track_id))
@@ -79,10 +96,13 @@ async fn serve_one_track(
 }
 
 async fn serve_one_visual(
-    extract::Path(id): extract::Path<u16>,
+    extract::Path((uuid, id)): extract::Path<(Uuid, u16)>,
     range: Option<TypedHeader<Range>>,
     extract::State(state): extract::State<Arc<AppState>>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    if uuid != state.uuid {
+        return Err(StatusCode::NOT_FOUND);
+    }
     let item = state
         .visuals
         .get(usize::from(id))
@@ -91,8 +111,12 @@ async fn serve_one_visual(
     Ok(item.make_response(range).await)
 }
 
-pub fn make_app(entries: &mut [crate::audio::AudioFile], base: &url::Url) -> axum::routing::Router {
-    let mut state = AppState::default();
+pub fn make_app(
+    uuid: Uuid,
+    entries: &mut [crate::audio::AudioFile],
+    base: &url::Url,
+) -> axum::routing::Router {
+    let mut state = AppState::new(uuid);
     for ent in entries.iter_mut() {
         state.tracks.push(ServedItem {
             mime_type: ent.mime_type.into(),
@@ -106,14 +130,20 @@ pub fn make_app(entries: &mut [crate::audio::AudioFile], base: &url::Url) -> axu
                     contents: ServedData::Memory(visual.data.into()),
                 });
                 let mut url = base.clone();
-                url.set_path(&format!("/visual/{i}"));
+                url.set_path(&format!("/{uuid}/visual/{i}"));
                 meta.cast_metadata.images =
                     vec![rust_cast::channels::media::Image::new(url.into())];
             }
         }
     }
     axum::Router::new()
-        .route("/track/:track_id", axum::routing::get(serve_one_track))
-        .route("/visual/:track_id", axum::routing::get(serve_one_visual))
+        .route(
+            "/:uuid/track/:track_id",
+            axum::routing::get(serve_one_track),
+        )
+        .route(
+            "/:uuid/visual/:track_id",
+            axum::routing::get(serve_one_visual),
+        )
         .with_state(Arc::new(state))
 }
