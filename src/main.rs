@@ -186,11 +186,9 @@ async fn play(
                             // Added the missing impl
                             assert_eq!(stat_ent.player_state, PlayerState::Idle);
                             match reason {
-                                IdleReason::Cancelled
-                                | IdleReason::Finished
-                                | IdleReason::Error => break 'messages,
-                                // Somehow getting Interrupted between every successive tracks
-                                IdleReason::Interrupted => (),
+                                IdleReason::Cancelled | IdleReason::Error => break 'messages,
+                                // Somehow getting Interrupted (when skipping?) or Finished (without?) between successive tracks
+                                IdleReason::Interrupted | IdleReason::Finished => (),
                             }
                         }
                     }
