@@ -6,7 +6,7 @@ use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta;
 use symphonia::core::meta::MetadataReader as _;
-use symphonia::default::formats::{FlacReader, OggReader};
+use symphonia::default::formats::{FlacReader, IsoMp4Reader, OggReader};
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -93,6 +93,7 @@ enum ContainerKind {
     Flac,
     Ogg,
     Mp3,
+    Mp4,
 }
 
 impl ContainerKind {
@@ -103,6 +104,7 @@ impl ContainerKind {
             "mp3" => Some(Self::Mp3),
             // mp4 metadata for aac? meh
             // Also the m4a extension is shared with ALAC, a pointless format the Chromecast won't handle
+            "m4a" => Some(Self::Mp4),
             // wav? only if metadata can be made to work
             _ => None,
         }
@@ -113,6 +115,7 @@ impl ContainerKind {
             ContainerKind::Flac => "audio/flac",
             ContainerKind::Ogg => "audio/ogg",
             ContainerKind::Mp3 => "audio/mpeg",
+            ContainerKind::Mp4 => "audio/m4a",
         }
     }
 }
@@ -140,6 +143,7 @@ fn read_metadata(
         // build a reader directly
         ContainerKind::Flac => reader = Box::new(FlacReader::try_new(mss, &Default::default())?),
         ContainerKind::Ogg => reader = Box::new(OggReader::try_new(mss, &Default::default())?),
+        ContainerKind::Mp4 => reader = Box::new(IsoMp4Reader::try_new(mss, &Default::default())?),
     }
 
     let meta = reader.metadata();
