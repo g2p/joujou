@@ -129,6 +129,8 @@ async fn play(
     let app = device
         .receiver
         .launch_app(&CastDeviceApp::DefaultMediaReceiver)?;
+    // This gets reused between invocations; we do need our own UUID generation
+    log::info!("App transport_id {}", app.transport_id);
     device.connection.connect(app.transport_id.as_str())?;
     let media_queue = MediaQueue {
         items: entries
