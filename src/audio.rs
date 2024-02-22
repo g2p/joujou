@@ -102,6 +102,7 @@ impl ContainerKind {
             "ogg" | "oga" | "opus" => Some(Self::Ogg),
             "mp3" => Some(Self::Mp3),
             // mp4 metadata for aac? meh
+            // Also the m4a extension is shared with ALAC, a pointless format the Chromecast won't handle
             // wav? only if metadata can be made to work
             _ => None,
         }
