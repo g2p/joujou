@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 
 use rust_cast::channels::media::MusicTrackMediaMetadata;
+use symphonia::core::codecs;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta;
@@ -146,10 +147,35 @@ fn read_metadata(
         ContainerKind::Mp4 => reader = Box::new(IsoMp4Reader::try_new(mss, &Default::default())?),
     }
 
+    validate_codecs(&*reader, container_kind)?;
+
     let meta = reader.metadata();
     let Some(meta) = meta.current() else {
         return Ok(None);
     };
 
     Ok(Some(convert_metadata(meta)))
+}
+
+fn validate_codecs(reader: &dyn FormatReader, container_kind: ContainerKind) -> anyhow::Result<()> {
+    for track in reader.tracks() {
+        let codec = track.codec_params.codec;
+        log::debug!("track {:?} codec {:x?}", track, codec);
+        if match container_kind {
+            ContainerKind::Flac => codec != codecs::CODEC_TYPE_FLAC,
+            ContainerKind::Ogg => {
+                codec != codecs::CODEC_TYPE_VORBIS && codec != codecs::CODEC_TYPE_OPUS
+            }
+            ContainerKind::Mp3 => codec != codecs::CODEC_TYPE_MP3,
+            ContainerKind::Mp4 => codec != codecs::CODEC_TYPE_AAC,
+        } {
+            anyhow::bail!(
+                "Unexpected codec {:04x?} for container {}",
+                codec,
+                container_kind.mime_type()
+            )
+        }
+    }
+    //anyhow::bail!("Just checking");
+    Ok(())
 }
