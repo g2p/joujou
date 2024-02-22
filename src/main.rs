@@ -8,7 +8,7 @@ use std::os::unix::ffi::OsStrExt;
 use rust_cast::channels::connection::ConnectionResponse;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{
-    Media, MediaQueue, MediaResponse, PlayerState, QueueItem, StreamType,
+    IdleReason, Media, MediaQueue, MediaResponse, PlayerState, QueueItem, StreamType,
 };
 use rust_cast::channels::receiver::CastDeviceApp;
 use rust_cast::ChannelMessage;
@@ -181,11 +181,17 @@ async fn play(
                         // The player became idle, and not because it hasn't started yet
                         // Either it's Finished (ran out of playlist), or the user explicitly stopped it,
                         // or some fatal error happened.  Either way, time to exit.
-                        if let Some(_reason) = stat_ent.idle_reason {
+                        if let Some(reason) = stat_ent.idle_reason {
                             assert!(matches!(stat_ent.player_state, PlayerState::Idle));
                             // Added the missing impl
                             assert_eq!(stat_ent.player_state, PlayerState::Idle);
-                            break 'messages;
+                            match reason {
+                                IdleReason::Cancelled
+                                | IdleReason::Finished
+                                | IdleReason::Error => break 'messages,
+                                // Somehow getting Interrupted between every successive tracks
+                                IdleReason::Interrupted => (),
+                            }
                         }
                     }
                 }
