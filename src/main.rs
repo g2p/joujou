@@ -8,7 +8,8 @@ use std::os::unix::ffi::OsStrExt;
 use rust_cast::channels::connection::ConnectionResponse;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{
-    IdleReason, Media, MediaQueue, MediaResponse, PlayerState, QueueItem, StreamType,
+    ExtendedPlayerState, Media, MediaQueue, MediaResponse, PlayerState, QueueItem, QueueType,
+    StreamType,
 };
 use rust_cast::channels::receiver::CastDeviceApp;
 use rust_cast::ChannelMessage;
@@ -149,6 +150,7 @@ async fn play(
             })
             .collect(),
         start_index,
+        queue_type: QueueType::Playlist,
     };
     let status = device
         .media
@@ -183,14 +185,17 @@ async fn play(
                         // The player became idle, and not because it hasn't started yet
                         // Either it's Finished (ran out of playlist), or the user explicitly stopped it,
                         // or some fatal error happened.  Either way, time to exit.
-                        if let Some(reason) = stat_ent.idle_reason {
+                        if let Some(_reason) = stat_ent.idle_reason {
                             assert!(matches!(stat_ent.player_state, PlayerState::Idle));
                             // Added the missing impl
                             assert_eq!(stat_ent.player_state, PlayerState::Idle);
-                            match reason {
-                                IdleReason::Cancelled | IdleReason::Error => break 'messages,
-                                // Somehow getting Interrupted (when skipping?) or Finished (without?) between successive tracks
-                                IdleReason::Interrupted | IdleReason::Finished => (),
+                            let Some(es) = stat_ent.extended_status else {
+                                break 'messages;
+                            };
+                            // At the moment the enum has just this element,
+                            // use this so any additions must be handled.
+                            match es.player_state {
+                                ExtendedPlayerState::Loading => (),
                             }
                         }
                     }
