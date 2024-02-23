@@ -3,7 +3,6 @@
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
-use std::os::unix::ffi::OsStrExt;
 
 use rust_cast::channels::connection::ConnectionResponse;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
@@ -20,61 +19,17 @@ mod audio;
 mod cli;
 mod http;
 mod net;
-
-use audio::AudioFile;
+mod scan;
 
 // I'd like rust_cast to export those constants
 const DEFAULT_DESTINATION_ID: &str = "receiver-0";
-
-/// List music files, sort them appropriately, build the queue/playlist
-fn scan_to_playlist(path: &std::path::Path) -> anyhow::Result<Vec<AudioFile>> {
-    walkdir::WalkDir::new(path)
-        .same_file_system(true)
-        .sort_by(|a, b| {
-            natord::compare(
-                &a.file_name().to_string_lossy(),
-                &b.file_name().to_string_lossy(),
-            )
-            .then_with(|| a.file_name().cmp(b.file_name()))
-        })
-        .into_iter()
-        .filter_entry(|dent| {
-            if dent.file_name().as_bytes().starts_with(b".") {
-                return false;
-            };
-            true
-        })
-        .filter_map(|dent_r| {
-            match dent_r {
-                Ok(dent) => {
-                    // !dent.file_type().is_dir()
-                    // With !is_dir:
-                    // This could still be a symlink (to anything,
-                    // broken, etc) or a block special, etc
-                    // If we don't want symlinks we could filter them
-                    // out in both places we open files (for metadata
-                    // and from the http server).  If we want them, we
-                    // could do a realpath whitelist.
-                    if dent.file_type().is_file() {
-                        let path = dent.into_path();
-                        AudioFile::load_if_supported(path).transpose()
-                    } else {
-                        None
-                    }
-                }
-                // Always pass on errors, we'll use them to break out of iteration
-                Err(err) => Some(Err(err.into())),
-            }
-        })
-        .collect::<Result<_, _>>()
-}
 
 async fn play(
     path: &std::path::Path,
     playlist_start: NonZeroU16,
     port: &cli::PortOrRange,
 ) -> anyhow::Result<()> {
-    let mut entries = scan_to_playlist(path)?;
+    let mut entries = scan::dir_to_playlist(path)?.items;
     if entries.is_empty() {
         anyhow::bail!("Found no playable entries");
     }
@@ -212,6 +167,7 @@ async fn play(
             }
         }
     }
+    // TODO: tell the chromecast we're shutting down
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;

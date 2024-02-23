@@ -129,8 +129,9 @@ fn read_metadata(
     // Default options for buffering
     let mut mss = MediaSourceStream::new(Box::new(src), Default::default());
 
-    let mut reader: Box<dyn FormatReader>;
-    match container_kind {
+    // Don't use the probe system, which currently ignores the extension hint
+    // build a reader directly
+    let mut reader: Box<dyn FormatReader> = match container_kind {
         // For Mp3 metadata we just require id3v2, which is a container
         // around the mp3 file.  id3v1 would be 128 bytes tacked on after
         // the mp3 frames and immediately before EOF, can't really be
@@ -140,12 +141,10 @@ fn read_metadata(
             let meta = mreader.read_all(&mut mss)?;
             return Ok(Some(convert_metadata(&meta)));
         }
-        // Don't use the probe system, which currently ignores the extension hint
-        // build a reader directly
-        ContainerKind::Flac => reader = Box::new(FlacReader::try_new(mss, &Default::default())?),
-        ContainerKind::Ogg => reader = Box::new(OggReader::try_new(mss, &Default::default())?),
-        ContainerKind::Mp4 => reader = Box::new(IsoMp4Reader::try_new(mss, &Default::default())?),
-    }
+        ContainerKind::Flac => Box::new(FlacReader::try_new(mss, &Default::default())?),
+        ContainerKind::Ogg => Box::new(OggReader::try_new(mss, &Default::default())?),
+        ContainerKind::Mp4 => Box::new(IsoMp4Reader::try_new(mss, &Default::default())?),
+    };
 
     validate_codecs(&*reader, container_kind)?;
 
@@ -176,6 +175,5 @@ fn validate_codecs(reader: &dyn FormatReader, container_kind: ContainerKind) -> 
             )
         }
     }
-    //anyhow::bail!("Just checking");
     Ok(())
 }
