@@ -41,14 +41,14 @@ pub async fn bind(local_addr: &SocketAddr, port: &PortOrRange) -> std::io::Resul
     }
 }
 
-pub async fn discover() -> Option<(String, u16)> {
-    let mdns = ServiceDaemon::new().expect("Failed to create mDNS daemon.");
+pub async fn discover() -> anyhow::Result<(String, u16)> {
+    let mdns = ServiceDaemon::new()?;
 
-    let receiver = mdns
-        .browse(SERVICE_TYPE)
-        .expect("Failed to browse mDNS services.");
+    let receiver = mdns.browse(SERVICE_TYPE)?;
 
-    while let Ok(event) = receiver.recv_async().await {
+    // TODO timeout support
+    loop {
+        let event = receiver.recv_async().await?;
         match event {
             ServiceEvent::ServiceResolved(info) => {
                 let mut addresses = info
@@ -56,18 +56,18 @@ pub async fn discover() -> Option<(String, u16)> {
                     .iter()
                     .map(|address| address.to_string())
                     .collect::<Vec<_>>();
-                println!(
+                log::info!(
                     "Resolved a new service: {} ({})",
                     info.get_fullname(),
                     addresses.join(", ")
                 );
 
-                return Some((addresses.remove(0), info.get_port()));
+                mdns.shutdown()?.recv_async().await?;
+                return Ok((addresses.remove(0), info.get_port()));
             }
             other_event => {
-                println!("Received other service event: {:?}", other_event);
+                log::info!("Received other service event: {:?}", other_event);
             }
         }
     }
-    None
 }

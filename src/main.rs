@@ -4,6 +4,7 @@ use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
 
+use anyhow::Context;
 use rust_cast::channels::connection::ConnectionResponse;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{
@@ -46,9 +47,9 @@ async fn play(
     // XXX I would like mdns-sd to tell on which interface services
     // are discovered, so I can expose sender only on these (SO_BINDTODEVICE).
     // XXX This is one-shot
-    let Some((remote_address, remote_port)) = net::discover().await else {
-        anyhow::bail!("Could not find Chromecast.");
-    };
+    let (remote_address, remote_port) = net::discover()
+        .await
+        .with_context(|| "Could not find Chromecast.")?;
     // XXX Could I access the socket and call socket2 local_addr
     // (libc getsockname)?  CastDevice builds the TcpStream
     // but does not expose it.
@@ -177,9 +178,9 @@ async fn play(
 }
 
 async fn listen() -> anyhow::Result<()> {
-    let Some((remote_address, remote_port)) = net::discover().await else {
-        anyhow::bail!("Could not find Chromecast.");
-    };
+    let (remote_address, remote_port) = net::discover()
+        .await
+        .with_context(|| "Could not find Chromecast.")?;
     // XXX Could I access the socket and call socket2 local_addr
     // (libc getsockname)?  CastDevice builds the TcpStream
     // but does not expose it.
