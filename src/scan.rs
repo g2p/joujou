@@ -1,17 +1,19 @@
+use std::cmp::{Ordering, Reverse};
+use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::audio::AudioFile;
 
 pub struct Playlist {
     pub cover: Option<PathBuf>,
-    pub items: Vec<AudioFile>,
+    pub entries: Vec<AudioFile>,
 }
 
 /// List music files, sort them appropriately, build the queue/playlist
-pub fn dir_to_playlist(path: &std::path::Path) -> anyhow::Result<Playlist> {
-    let mut items = Vec::new();
-    //let mut covers = Vec::new();
+pub fn dir_to_playlist(path: &Path) -> anyhow::Result<Playlist> {
+    let mut entries = Vec::new();
+    let mut cover: Option<PathBuf> = None;
 
     for dent in walkdir::WalkDir::new(path)
         .same_file_system(true)
@@ -30,14 +32,45 @@ pub fn dir_to_playlist(path: &std::path::Path) -> anyhow::Result<Playlist> {
         // whitelist.
         if dent.file_type().is_file() {
             let path = dent.into_path();
-            if let Some(af) = AudioFile::load_if_supported(path)? {
-                items.push(af);
+            let Some(ext) = path.extension().and_then(OsStr::to_str) else {
+                continue;
+            };
+            if matches!(ext, "jpg" | "jpeg" | "png") {
+                if let Some(ref c0) = cover {
+                    if compare_covers(c0, &path) == Ordering::Less {
+                        log::info!("Preferring cover {} to {}", path.display(), c0.display());
+                        cover = Some(path)
+                    }
+                } else {
+                    cover = Some(path)
+                }
+            } else if let Some(af) = AudioFile::load_if_supported(path)? {
+                entries.push(af);
             }
         }
     }
-    items.sort_by(|a, b| {
+    entries.sort_by(|a, b| {
         natord::compare(&a.path.to_string_lossy(), &b.path.to_string_lossy())
             .then_with(|| a.path.cmp(&b.path))
     });
-    Ok(Playlist { cover: None, items })
+    Ok(Playlist { cover, entries })
+}
+
+fn cover_score(path: &Path) -> impl Ord {
+    const KNOWN_STEMS: &[&str; 4] = &["cover", "front", "00 - cover", "front cover"];
+    if let Some(stem) = path.file_stem().and_then(OsStr::to_str) {
+        if let Some(pos) = KNOWN_STEMS
+            .iter()
+            .position(|e| e == &stem.to_ascii_lowercase())
+        {
+            // Lower pos -> higher score
+            return Reverse(pos);
+        }
+    }
+    // Lowest possible score
+    Reverse(usize::MAX)
+}
+
+fn compare_covers(c0: &Path, c1: &Path) -> Ordering {
+    cover_score(c0).cmp(&cover_score(c1))
 }

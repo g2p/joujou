@@ -113,11 +113,12 @@ async fn serve_one_visual(
 
 pub fn make_app(
     uuid: Uuid,
-    entries: &mut [crate::audio::AudioFile],
+    playlist: &mut crate::scan::Playlist,
     base: &url::Url,
 ) -> axum::routing::Router {
     let mut state = AppState::new(uuid);
-    for ent in entries.iter_mut() {
+    let mut default_visual = None;
+    for ent in playlist.entries.iter_mut() {
         state.tracks.push(ServedItem {
             mime_type: ent.mime_type.into(),
             contents: ServedData::FileSystem(ent.path.clone()),
@@ -133,6 +134,19 @@ pub fn make_app(
                 url.set_path(&format!("/{uuid}/visual/{i}"));
                 meta.cast_metadata.images =
                     vec![rust_cast::channels::media::Image::new(url.into())];
+            } else if let Some(ref cover) = playlist.cover {
+                let default_visual = default_visual.get_or_insert_with(|| {
+                    log::info!("No embedded cover, using {}", cover.display());
+                    let i = state.visuals.len();
+                    state.visuals.push(ServedItem {
+                        mime_type: "image/jpeg".into(), // XXX
+                        contents: ServedData::FileSystem(cover.clone()),
+                    });
+                    let mut url = base.clone();
+                    url.set_path(&format!("/{uuid}/visual/{i}"));
+                    rust_cast::channels::media::Image::new(url.into())
+                });
+                meta.cast_metadata.images = vec![default_visual.clone()]
             }
         }
     }

@@ -29,17 +29,18 @@ async fn play(
     playlist_start: NonZeroU16,
     port: &cli::PortOrRange,
 ) -> anyhow::Result<()> {
-    let mut entries = scan::dir_to_playlist(path)?.items;
-    if entries.is_empty() {
+    let mut playlist = scan::dir_to_playlist(path)?;
+    if playlist.entries.is_empty() {
         anyhow::bail!("Found no playable entries");
     }
     // From 1-based (UI) to 0-based
     let start_index: u16 = playlist_start.get() - 1;
-    if !(..entries.len()).contains(&start_index.into()) {
+    let entlen = playlist.entries.len();
+    if !(..entlen).contains(&start_index.into()) {
         // greater than is accurate for the 1-based index
-        anyhow::bail!("Playlist start index greater than {}", entries.len());
+        anyhow::bail!("Playlist start index greater than {}", entlen);
     }
-    for entry in entries.iter() {
+    for entry in playlist.entries.iter() {
         println!("{}", entry.path.display());
     }
     // XXX I would like mdns-sd to tell on which interface services
@@ -68,7 +69,7 @@ async fn play(
     }
     let base = format!("http://{expose_addr}").parse().unwrap();
     let uuid = uuid::Uuid::new_v4();
-    let server = http::make_app(uuid, entries.as_mut_slice(), &base);
+    let server = http::make_app(uuid, &mut playlist, &base);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let join_server = tokio::spawn(
@@ -89,7 +90,8 @@ async fn play(
     log::info!("App transport_id {}", app.transport_id);
     device.connection.connect(app.transport_id.as_str())?;
     let media_queue = MediaQueue {
-        items: entries
+        items: playlist
+            .entries
             .into_iter()
             .enumerate()
             .map(|(i, ent)| QueueItem {
