@@ -31,4 +31,4 @@ logging = ["dep:env_logger"]
 [patch.crates-io]
 #rust_cast.git = "https://github.com/112RG/rust-cast.git"
 #rust_cast.path = "../../azasypkin/rust-cast"
-rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "queue-load" }
+rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "merged" }
