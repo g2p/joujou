@@ -90,8 +90,8 @@ pub struct App {
 
 fn play_command() -> OptionParser<Command> {
     let playlist_start = bpaf::long("playlist-start")
-        .argument("INDEX")
         .help("Start playing at INDEX (not necessarily the first track)")
+        .argument("INDEX")
         .fallback(NonZeroU16::MIN);
     let path = bpaf::positional::<PathBuf>("path").help("Directory path to play");
 
@@ -119,11 +119,11 @@ fn parser() -> OptionParser<App> {
         .help("Listen to events (playback…) from the chromecast device");
 
     let port = bpaf::long("port")
-        .argument("PORT[:PORT]")
         .help(
             "Port to listen on, can be picked within a range.\n \
             Please ensure your local network can access it.",
         )
+        .argument("PORT[:PORT]")
         .fallback(PortOrRange::RandomPort);
     let cmd = construct!([play_cmd, listen_cmd]);
     construct!(App { port, cmd }).to_options()
