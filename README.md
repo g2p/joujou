@@ -1,4 +1,4 @@
-# joujou: play a music album on a chromecast audio
+# joujou: play a music album on a chromecast
 
 joujou takes a directory of music files (sorted by file names) and sends
 it to a chromecast for playback.
@@ -18,10 +18,15 @@ the --ports flag).  Music files are accessed by the chromecast directly,
 but cover files can be accessed by other devices, for example phones
 used to control playback.
 
-Supported formats are: FLAC, MP3, Ogg Vorbis, Ogg Opus, AAC.
+Supported codecs are: FLAC, MP3, Vorbis, Opus, AAC.
+Vorbis and Opus can be in Ogg or WebM/Matroska containers, the rest
+use their native container.
+
+Supported file extensions: .flac .mp3 .ogg .opus .oga .mka .m4a
+
 This matches the formats a chromecast audio supports, with the exception
-of WAV: metadata charset detection and embedded covers would be tricky
-to support and FLAC is a better choice.
+of WAV: metadata charset detection and embedded covers are poorly
+standardized and tricky to support and FLAC is a better choice.
 
 Installation is done via cargo.
 Make sure rust is installed, then run:

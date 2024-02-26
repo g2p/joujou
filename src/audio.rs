@@ -7,7 +7,7 @@ use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta;
 use symphonia::core::meta::MetadataReader as _;
-use symphonia::default::formats::{FlacReader, IsoMp4Reader, OggReader};
+use symphonia::default::formats::{FlacReader, IsoMp4Reader, MkvReader, OggReader};
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -93,6 +93,7 @@ fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
 enum ContainerKind {
     Flac,
     Ogg,
+    Matroska,
     Mp3,
     Mp4,
 }
@@ -102,6 +103,7 @@ impl ContainerKind {
         match ext {
             "flac" => Some(Self::Flac),
             "ogg" | "oga" | "opus" => Some(Self::Ogg),
+            "mka" => Some(Self::Matroska),
             "mp3" => Some(Self::Mp3),
             // mp4 metadata for aac? meh
             // Also the m4a extension is shared with ALAC, a pointless format the Chromecast won't handle
@@ -115,6 +117,7 @@ impl ContainerKind {
         match self {
             ContainerKind::Flac => "audio/flac",
             ContainerKind::Ogg => "audio/ogg",
+            ContainerKind::Matroska => "audio/webm",
             ContainerKind::Mp3 => "audio/mpeg",
             ContainerKind::Mp4 => "audio/m4a",
         }
@@ -143,6 +146,7 @@ fn read_metadata(
         }
         ContainerKind::Flac => Box::new(FlacReader::try_new(mss, &Default::default())?),
         ContainerKind::Ogg => Box::new(OggReader::try_new(mss, &Default::default())?),
+        ContainerKind::Matroska => Box::new(MkvReader::try_new(mss, &Default::default())?),
         ContainerKind::Mp4 => Box::new(IsoMp4Reader::try_new(mss, &Default::default())?),
     };
 
@@ -156,13 +160,15 @@ fn read_metadata(
     Ok(Some(convert_metadata(meta)))
 }
 
+// https://developer.mozilla.org/en-US/docs/Web/Media/Formats/codecs_parameter
 fn validate_codecs(reader: &dyn FormatReader, container_kind: ContainerKind) -> anyhow::Result<()> {
     for track in reader.tracks() {
         let codec = track.codec_params.codec;
         log::debug!("track {:?} codec {:x?}", track, codec);
         if match container_kind {
             ContainerKind::Flac => codec != codecs::CODEC_TYPE_FLAC,
-            ContainerKind::Ogg => {
+            // If the extension is opus, we might want to be stricter
+            ContainerKind::Ogg | ContainerKind::Matroska => {
                 codec != codecs::CODEC_TYPE_VORBIS && codec != codecs::CODEC_TYPE_OPUS
             }
             ContainerKind::Mp3 => codec != codecs::CODEC_TYPE_MP3,

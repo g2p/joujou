@@ -18,7 +18,7 @@ log = "0.4.20"
 mdns-sd = "0.10.4"
 natord = "1.0.9"
 rust_cast = "0.18"
-symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "isomp4"] }
+symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "mkv", "isomp4"] }
 symphonia-metadata = "0.5.3"
 tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "fs"] }
 url = "2.5.0"
