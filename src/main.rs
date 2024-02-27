@@ -3,6 +3,7 @@
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
+use std::path::Path;
 
 use anyhow::Context;
 use rust_cast::channels::connection::ConnectionResponse;
@@ -26,11 +27,12 @@ mod scan;
 const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
 async fn play(
-    path: &std::path::Path,
+    path: &Path,
     playlist_start: NonZeroU16,
     port: &cli::PortOrRange,
+    beets_db: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let mut playlist = scan::dir_to_playlist(path)?;
+    let mut playlist = scan::dir_to_playlist(path, beets_db)?;
     if playlist.entries.is_empty() {
         anyhow::bail!("Found no playable entries");
     }
@@ -223,7 +225,7 @@ async fn main() -> anyhow::Result<()> {
         cli::Command::Play {
             path,
             playlist_start,
-        } => play(&path, playlist_start, &app.port).await,
+        } => play(&path, playlist_start, &app.port, app.beets_db.as_deref()).await,
         cli::Command::Listen => listen().await,
     }
 }

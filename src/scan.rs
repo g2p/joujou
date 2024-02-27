@@ -11,9 +11,19 @@ pub struct Playlist {
 }
 
 /// List music files, sort them appropriately, build the queue/playlist
-pub fn dir_to_playlist(path: &Path) -> anyhow::Result<Playlist> {
+pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<Playlist> {
     let mut entries = Vec::new();
     let mut cover: Option<PathBuf> = None;
+
+    let beets_db = if let Some(beets_db) = beets_db {
+        use rusqlite::OpenFlags;
+        Some(rusqlite::Connection::open_with_flags(
+            beets_db,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?)
+    } else {
+        None
+    };
 
     for dent in walkdir::WalkDir::new(path)
         .same_file_system(true)
@@ -30,7 +40,8 @@ pub fn dir_to_playlist(path: &Path) -> anyhow::Result<Playlist> {
         // places we open files (for metadata and from the http server).
         // If we want them, we could be configured with a realpath
         // whitelist.
-        if dent.file_type().is_file() {
+        //if dent.file_type().is_file() {
+        if !dent.file_type().is_dir() {
             let path = dent.into_path();
             let Some(ext) = path.extension().and_then(OsStr::to_str) else {
                 continue;
@@ -44,7 +55,7 @@ pub fn dir_to_playlist(path: &Path) -> anyhow::Result<Playlist> {
                 } else {
                     cover = Some(path)
                 }
-            } else if let Some(af) = AudioFile::load_if_supported(path)? {
+            } else if let Some(af) = AudioFile::load_if_supported(path, beets_db.as_ref())? {
                 entries.push(af);
             }
         }
@@ -57,6 +68,7 @@ pub fn dir_to_playlist(path: &Path) -> anyhow::Result<Playlist> {
 }
 
 fn cover_score(path: &Path) -> impl Ord {
+    // Other options to consider: art album folder
     const KNOWN_STEMS: &[&str; 4] = &["cover", "front", "00 - cover", "front cover"];
     if let Some(stem) = path.file_stem().and_then(OsStr::to_str) {
         if let Some(pos) = KNOWN_STEMS

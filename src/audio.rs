@@ -1,6 +1,8 @@
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 
+use rusqlite::OptionalExtension;
 use rust_cast::channels::media::MusicTrackMediaMetadata;
 use symphonia::core::codecs;
 use symphonia::core::formats::FormatReader;
@@ -28,11 +30,24 @@ impl AudioFile {
     /// Load known audio files (based on extension)
     /// Ok(None) if not a known extension
     /// Err if a known extension but parsing failed
-    pub fn load_if_supported(path: PathBuf) -> anyhow::Result<Option<Self>> {
+    pub fn load_if_supported(
+        path: PathBuf,
+        beets_db: Option<&rusqlite::Connection>,
+    ) -> anyhow::Result<Option<Self>> {
         let ext = path.extension().and_then(OsStr::to_str).unwrap_or_default();
         if let Some(ckind) = ContainerKind::from_ext(ext) {
             let mime_type = ckind.mime_type();
-            let metadata = read_metadata(&path, ckind)?;
+            let mut metadata = read_metadata(&path, ckind)?;
+            if let Some(beets_db) = beets_db {
+                // We still call read_metadata above while discarding
+                // successful results, it validates codecs.
+                // Also, we might want to merge metadata, maybe
+                // pick up attached visuals when they aren't in the
+                // beets db.
+                if let Some(beets_meta) = beets_metadata(beets_db, &path)? {
+                    metadata = Some(beets_meta);
+                }
+            }
             Ok(Some(AudioFile {
                 path,
                 mime_type,
@@ -62,6 +77,9 @@ fn u32_value(tag: &meta::Tag) -> Option<u32> {
 
 // converts tags to rust cast format, keeps visuals in Symphonia
 // format until a URL can be built to serve them
+// Maps between
+// https://docs.rs/symphonia-core/latest/symphonia_core/meta/enum.StandardTagKey.html
+// https://developers.google.com/cast/docs/media/messages#MusicTrackMediaMetadata
 fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
     use symphonia::core::meta::StandardTagKey::*;
     let mut cmeta = MusicTrackMediaMetadata::default();
@@ -124,10 +142,7 @@ impl ContainerKind {
     }
 }
 
-fn read_metadata(
-    path: &std::path::Path,
-    container_kind: ContainerKind,
-) -> anyhow::Result<Option<Metadata>> {
+fn read_metadata(path: &Path, container_kind: ContainerKind) -> anyhow::Result<Option<Metadata>> {
     let src = std::fs::File::open(path)?;
     // Default options for buffering
     let mut mss = MediaSourceStream::new(Box::new(src), Default::default());
@@ -158,6 +173,45 @@ fn read_metadata(
     };
 
     Ok(Some(convert_metadata(meta)))
+}
+
+fn beets_metadata(
+    beets_db: &rusqlite::Connection,
+    path: &Path,
+) -> anyhow::Result<Option<Metadata>> {
+    let mut stmt = beets_db.prepare_cached(
+        "SELECT album, title, albumartist, artist, composer, \
+        track, disc, year, month, day \
+        FROM items WHERE path = ?1",
+    )?;
+    Ok(stmt
+        .query_row([path.as_os_str().as_bytes()], |row| {
+            log::info!("Row {row:?}");
+            let release_date = Some(format!(
+                "{}-{}-{}",
+                row.get_unwrap::<usize, u16>(7),
+                row.get_unwrap::<usize, u16>(8),
+                row.get_unwrap::<usize, u16>(9),
+            ));
+            // Assuming beets has fetchart enabled with default settings,
+            // we don't need to do anything for images,
+            // they will be in cover.jpg which we autodetect.
+            Ok(Metadata {
+                cast_metadata: MusicTrackMediaMetadata {
+                    album_name: row.get_unwrap(0),
+                    title: row.get_unwrap(1),
+                    album_artist: row.get_unwrap(2),
+                    artist: row.get_unwrap(3),
+                    composer: row.get_unwrap(4),
+                    track_number: row.get_unwrap(5),
+                    disc_number: row.get_unwrap(6),
+                    release_date,
+                    images: Vec::new(),
+                },
+                visual: None,
+            })
+        })
+        .optional()?)
 }
 
 // https://developer.mozilla.org/en-US/docs/Web/Media/Formats/codecs_parameter

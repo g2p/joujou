@@ -17,6 +17,7 @@ log = "0.4.20"
 # Maybe consider an alternative, I don't need the channels
 mdns-sd = "0.10.4"
 natord = "1.0.9"
+rusqlite = "0.31.0"
 rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "merged" }
 #rust_cast = { path = "../../azasypkin/rust-cast" }
 symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "mkv", "isomp4"] }

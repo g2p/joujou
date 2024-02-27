@@ -85,6 +85,7 @@ impl FromStr for PortOrRange {
 #[derive(Debug, Clone)]
 pub struct App {
     pub port: PortOrRange,
+    pub beets_db: Option<PathBuf>,
     pub cmd: Command,
 }
 
@@ -118,6 +119,7 @@ fn parser() -> OptionParser<App> {
         .command("listen")
         .help("Listen to events (playback…) from the chromecast device");
 
+    // Common arguments (use a basic-toml conffile at some point)
     let port = bpaf::long("port")
         .help(
             "Port to listen on, can be picked within a range.\n \
@@ -125,8 +127,21 @@ fn parser() -> OptionParser<App> {
         )
         .argument("PORT[:PORT]")
         .fallback(PortOrRange::RandomPort);
+    let beets_db = bpaf::long("beets-db")
+        .help(
+            "Path to beets library.db.\n \
+            Tracks that match a path within the beets library will be cast \
+            with metadata from the library",
+        )
+        .argument("PATH")
+        .optional();
     let cmd = construct!([play_cmd, listen_cmd]);
-    construct!(App { port, cmd }).to_options()
+    construct!(App {
+        port,
+        beets_db,
+        cmd
+    })
+    .to_options()
 }
 
 pub fn parse_cli() -> App {
