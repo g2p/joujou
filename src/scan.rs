@@ -71,10 +71,8 @@ fn cover_score(path: &Path) -> impl Ord {
     // Other options to consider: art album folder
     const KNOWN_STEMS: &[&str; 4] = &["cover", "front", "00 - cover", "front cover"];
     if let Some(stem) = path.file_stem().and_then(OsStr::to_str) {
-        if let Some(pos) = KNOWN_STEMS
-            .iter()
-            .position(|e| e == &stem.to_ascii_lowercase())
-        {
+        let stem_lcase = stem.to_ascii_lowercase();
+        if let Some(pos) = KNOWN_STEMS.iter().position(|e| e == &stem_lcase) {
             // Lower pos -> higher score
             return Reverse(pos);
         }
