@@ -195,8 +195,28 @@ async fn listen() -> anyhow::Result<()> {
         .connection
         .connect(DEFAULT_DESTINATION_ID.to_string())?;
     println!("Connected to device and {}", DEFAULT_DESTINATION_ID);
-    // This loop only seems to get [Receiver] status entries (not too useful)
-    // Presumably there is a way to join an existing session to know more?
+
+    println!("Connecting to default media receiver");
+    let status = device.receiver.get_status()?;
+
+    // Bail if the media receiver is not running
+    let app = status
+        .applications
+        .iter()
+        .find(|app| app.app_id.as_str().parse() == Ok(CastDeviceApp::DefaultMediaReceiver))
+        .ok_or_else(|| anyhow::anyhow!("Default media receiver not running"))?;
+
+    // We found the default media receiver running, connect to it
+    // Presumably we could also join media sessions of other running apps
+    // by looking for apps where {"name":"urn:x-cast:com.google.cast.media"}
+    // appears within the app.namespaces[] array
+    device.connection.connect(&app.transport_id)?;
+    println!("Connected to default media receiver {:?}", app);
+
+    // We can act for media status actively:
+    device.media.get_status(&app.transport_id, None)?;
+
+    // We will also get media status updates on track changes
     loop {
         match device.receive() {
             Ok(ChannelMessage::Heartbeat(response)) => {
