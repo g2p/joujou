@@ -14,6 +14,7 @@ pub struct Playlist {
 pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<Playlist> {
     let mut entries = Vec::new();
     let mut cover: Option<PathBuf> = None;
+    let mut coverscore = None;
 
     let beets_db = if let Some(beets_db) = beets_db {
         use rusqlite::OpenFlags;
@@ -48,9 +49,12 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
             };
             if matches!(ext, "jpg" | "jpeg" | "png") {
                 if let Some(ref c0) = cover {
-                    if compare_covers(c0, &path) == Ordering::Less {
+                    let sc0 = coverscore.get_or_insert_with(|| cover_score(c0));
+                    let sc1 = cover_score(&path);
+                    if sc1.cmp(sc0) == Ordering::Greater {
                         log::info!("Preferring cover {} to {}", path.display(), c0.display());
-                        cover = Some(path)
+                        cover = Some(path);
+                        coverscore = Some(sc1);
                     }
                 } else {
                     cover = Some(path)
@@ -79,8 +83,4 @@ fn cover_score(path: &Path) -> impl Ord {
     }
     // Lowest possible score
     Reverse(usize::MAX)
-}
-
-fn compare_covers(c0: &Path, c1: &Path) -> Ordering {
-    cover_score(c0).cmp(&cover_score(c1))
 }
