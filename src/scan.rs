@@ -57,7 +57,7 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
                         coverscore = Some(sc1);
                     }
                 } else {
-                    cover = Some(path)
+                    cover = Some(path);
                 }
             } else if let Some(af) = AudioFile::load_if_supported(path, beets_db.as_ref())? {
                 entries.push(af);

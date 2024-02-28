@@ -146,7 +146,7 @@ pub fn make_app(
                     url.set_path(&format!("/{uuid}/visual/{i}"));
                     rust_cast::channels::media::Image::new(url.into())
                 });
-                meta.cast_metadata.images = vec![default_visual.clone()]
+                meta.cast_metadata.images = vec![default_visual.clone()];
             }
         }
     }
