@@ -36,8 +36,8 @@ impl IntoIterator for PortOrRange {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             Self::RandomPort => 0..=0,
-            PortOrRange::SinglePort(port) => port.get()..=port.get(),
-            PortOrRange::Range(inclrange) => inclrange.start().get()..=inclrange.end().get(),
+            Self::SinglePort(port) => port.get()..=port.get(),
+            Self::Range(inclrange) => inclrange.start().get()..=inclrange.end().get(),
         }
     }
 }

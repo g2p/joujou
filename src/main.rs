@@ -159,7 +159,7 @@ async fn listen() -> anyhow::Result<()> {
     loop {
         match device.receive() {
             Ok(ChannelMessage::Heartbeat(response)) => {
-                if let HeartbeatResponse::Ping = response {
+                if matches!(response, HeartbeatResponse::Ping) {
                     device.heartbeat.pong().unwrap();
                 }
             }

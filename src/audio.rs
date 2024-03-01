@@ -48,7 +48,7 @@ impl AudioFile {
                     metadata = Some(beets_meta);
                 }
             }
-            Ok(Some(AudioFile {
+            Ok(Some(Self {
                 path,
                 mime_type,
                 metadata,
@@ -131,13 +131,13 @@ impl ContainerKind {
         }
     }
 
-    fn mime_type(self) -> &'static str {
+    const fn mime_type(self) -> &'static str {
         match self {
-            ContainerKind::Flac => "audio/flac",
-            ContainerKind::Ogg => "audio/ogg",
-            ContainerKind::Matroska => "audio/webm",
-            ContainerKind::Mp3 => "audio/mpeg",
-            ContainerKind::Mp4 => "audio/m4a",
+            Self::Flac => "audio/flac",
+            Self::Ogg => "audio/ogg",
+            Self::Matroska => "audio/webm",
+            Self::Mp3 => "audio/mpeg",
+            Self::Mp4 => "audio/m4a",
         }
     }
 }

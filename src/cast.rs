@@ -12,7 +12,7 @@ pub fn sender_loop(device: CastDevice, media_session_id: i32) {
     loop {
         match device.receive() {
             Ok(ChannelMessage::Heartbeat(response)) => {
-                if let HeartbeatResponse::Ping = response {
+                if matches!(response, HeartbeatResponse::Ping) {
                     device.heartbeat.pong().unwrap();
                 }
             }
