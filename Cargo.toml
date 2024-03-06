@@ -20,7 +20,7 @@ natord = "1.0.9"
 rusqlite = "0.31.0"
 rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "merged" }
 #rust_cast = { path = "../../azasypkin/rust-cast" }
-symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "mkv", "isomp4"] }
+symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "mkv", "mp3", "isomp4"] }
 symphonia-metadata = "0.5.3"
 tokio = { version = "1.36.0", features = ["macros", "net", "rt-multi-thread", "fs"] }
 url = "2.5.0"

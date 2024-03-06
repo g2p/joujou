@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::io::{Seek, SeekFrom};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +10,7 @@ use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta;
 use symphonia::core::meta::MetadataReader as _;
-use symphonia::default::formats::{FlacReader, IsoMp4Reader, MkvReader, OggReader};
+use symphonia::default::formats::{FlacReader, IsoMp4Reader, MkvReader, MpaReader, OggReader};
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -156,8 +157,22 @@ fn read_metadata(path: &Path, container_kind: ContainerKind) -> anyhow::Result<O
         // detected unambiguously.
         ContainerKind::Mp3 => {
             let mut mreader = symphonia_metadata::id3v2::Id3v2Reader::new(&Default::default());
-            let meta = mreader.read_all(&mut mss)?;
-            return Ok(Some(convert_metadata(&meta)));
+            match mreader.read_all(&mut mss) {
+                Ok(meta) => return Ok(Some(convert_metadata(&meta))),
+                Err(err) => {
+                    if !matches!(err, symphonia::core::errors::Error::Unsupported(_)) {
+                        return Err(err.into());
+                    }
+                }
+            }
+            log::warn!("{} does not start with ID3v2 frames", path.display());
+            // This just validates this is an MPEG stream
+            let reader = MpaReader::try_new(mss, &Default::default())?;
+            let mut mss = Box::new(reader).into_inner();
+            mss.seek(SeekFrom::End(-128))?;
+            let mut meta = meta::MetadataBuilder::new();
+            symphonia_metadata::id3v1::read_id3v1(&mut mss, &mut meta)?;
+            return Ok(Some(convert_metadata(&meta.metadata())));
         }
         ContainerKind::Flac => Box::new(FlacReader::try_new(mss, &Default::default())?),
         ContainerKind::Ogg => Box::new(OggReader::try_new(mss, &Default::default())?),
