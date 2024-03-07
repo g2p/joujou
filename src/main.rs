@@ -52,7 +52,8 @@ async fn play(
     let device = rust_cast::CastDevice::connect_without_host_verification(
         remote_address.as_str(),
         remote_port,
-    )?;
+    )
+    .await?;
     let mut tcp1 = tokio::net::TcpStream::connect((remote_address.as_str(), remote_port)).await?;
     let local_addr = tcp1.local_addr()?;
     tcp1.shutdown().await?;
@@ -77,15 +78,17 @@ async fn play(
 
     device
         .connection
-        .connect(cast::DEFAULT_DESTINATION_ID.to_string())?;
+        .connect(cast::DEFAULT_DESTINATION_ID.to_string())
+        .await?;
     //device.heartbeat.ping()?;
 
     let app = device
         .receiver
-        .launch_app(&CastDeviceApp::DefaultMediaReceiver)?;
+        .launch_app(&CastDeviceApp::DefaultMediaReceiver)
+        .await?;
     // This gets reused between invocations; we do need our own UUID generation
     log::info!("App transport_id {}", app.transport_id);
-    device.connection.connect(app.transport_id.as_str())?;
+    device.connection.connect(app.transport_id.as_str()).await?;
     let media_queue = MediaQueue {
         items: playlist
             .entries
@@ -108,10 +111,10 @@ async fn play(
     };
     let status = device
         .media
-        .load_queue(app.transport_id, app.session_id, &media_queue)?;
+        .load_queue(app.transport_id, app.session_id, &media_queue)
+        .await?;
     let media_session_id = status.entries.first().unwrap().media_session_id;
-    // We can't do task::spawn_blocking because Device is not Send (contains Rc)
-    tokio::task::block_in_place(|| cast::sender_loop(device, media_session_id));
+    cast::sender_loop(device, media_session_id).await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;
@@ -128,15 +131,17 @@ async fn listen() -> anyhow::Result<()> {
     let device = rust_cast::CastDevice::connect_without_host_verification(
         remote_address.as_str(),
         remote_port,
-    )?;
+    )
+    .await?;
     println!("Connecting to device and {}", cast::DEFAULT_DESTINATION_ID);
     device
         .connection
-        .connect(cast::DEFAULT_DESTINATION_ID.to_string())?;
+        .connect(cast::DEFAULT_DESTINATION_ID.to_string())
+        .await?;
     println!("Connected to device and {}", cast::DEFAULT_DESTINATION_ID);
 
     println!("Connecting to default media receiver");
-    let status = device.receiver.get_status()?;
+    let status = device.receiver.get_status().await?;
 
     // Bail if the media receiver is not running
     let app = status
@@ -149,18 +154,18 @@ async fn listen() -> anyhow::Result<()> {
     // Presumably we could also join media sessions of other running apps
     // by looking for apps where {"name":"urn:x-cast:com.google.cast.media"}
     // appears within the app.namespaces[] array
-    device.connection.connect(&app.transport_id)?;
+    device.connection.connect(&app.transport_id).await?;
     println!("Connected to default media receiver {:?}", app);
 
     // We can act for media status actively:
-    device.media.get_status(&app.transport_id, None)?;
+    device.media.get_status(&app.transport_id, None).await?;
 
     // We will also get media status updates on track changes
     loop {
-        match device.receive() {
+        match device.receive().await {
             Ok(ChannelMessage::Heartbeat(response)) => {
                 if matches!(response, HeartbeatResponse::Ping) {
-                    device.heartbeat.pong().unwrap();
+                    device.heartbeat.pong().await.unwrap();
                 }
             }
             Ok(ChannelMessage::Connection(response)) => println!("[Connection] {:?}", response),

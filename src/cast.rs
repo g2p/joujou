@@ -8,12 +8,12 @@ pub const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
 /// Blocking function that reads device messages,
 /// until the peer closes the connection
-pub fn sender_loop(device: CastDevice, media_session_id: i32) {
+pub async fn sender_loop(device: CastDevice<'_>, media_session_id: i32) {
     loop {
-        match device.receive() {
+        match device.receive().await {
             Ok(ChannelMessage::Heartbeat(response)) => {
                 if matches!(response, HeartbeatResponse::Ping) {
-                    device.heartbeat.pong().unwrap();
+                    device.heartbeat.pong().await.unwrap();
                 }
             }
             Ok(ChannelMessage::Connection(response)) => {
@@ -59,6 +59,7 @@ pub fn sender_loop(device: CastDevice, media_session_id: i32) {
                 device
                     .connection
                     .disconnect(DEFAULT_DESTINATION_ID)
+                    .await
                     .unwrap();
                 return;
             }
