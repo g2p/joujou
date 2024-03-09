@@ -17,6 +17,7 @@ mod audio;
 mod cast;
 mod cli;
 mod http;
+mod mpris;
 mod net;
 mod scan;
 
