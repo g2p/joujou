@@ -1,13 +1,11 @@
 use mpris_server::async_trait;
 use mpris_server::zbus;
 use mpris_server::zbus::fdo;
-use mpris_server::LoopStatus;
-use mpris_server::PlaybackRate;
-use mpris_server::PlaybackStatus;
-use mpris_server::TrackId;
 use mpris_server::{
-    LocalPlayerInterface, LocalRootInterface, Metadata, Property, Server, Signal, Time, Volume,
+    LocalPlayerInterface, LocalRootInterface, LoopStatus, Metadata, PlaybackRate, PlaybackStatus,
+    Time, TrackId, Volume,
 };
+use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState};
 
 fn errconvert(err: rust_cast::errors::Error) -> zbus::Error {
     zbus::Error::Failure(format!("rust_cast error {err}"))
@@ -122,7 +120,30 @@ impl<'a> LocalPlayerInterface for Player<'a> {
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        todo!()
+        // We could proactively cache all status messages (for our
+        // media_session_id) as we receive them
+        let status = self
+            .device
+            .media
+            .get_status(&self.transport_id, Some(self.media_session_id))
+            .await
+            .map_err(errconvert)?;
+        // Should have just the one we requested
+        assert_eq!(status.entries.len(), 1);
+        let sentry = &status.entries[0];
+        assert_eq!(sentry.media_session_id, self.media_session_id);
+        Ok(match sentry.player_state {
+            PlayerState::Idle => match sentry.extended_status {
+                Some(ExtendedStatus {
+                    player_state: ExtendedPlayerState::Loading,
+                    ..
+                }) => PlaybackStatus::Playing,
+                None => PlaybackStatus::Stopped,
+            },
+            PlayerState::Playing => PlaybackStatus::Playing,
+            PlayerState::Buffering => PlaybackStatus::Playing,
+            PlayerState::Paused => PlaybackStatus::Paused,
+        })
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
