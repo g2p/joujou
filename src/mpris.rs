@@ -17,6 +17,12 @@ pub struct Player<'a> {
     media_session_id: i32,
 }
 
+fn mpris_time_to_seek_time(time: Time) -> f32 {
+    // No from or tryfrom in this case (lossy); "as" casts are the only option
+    // mpris Time is internally i64 microseconds
+    ((time.as_micros() as f64) / 1_000_000.) as f32
+}
+
 /// https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
 #[async_trait(?Send)]
 impl<'a> LocalRootInterface for Player<'a> {
@@ -45,7 +51,7 @@ impl<'a> LocalRootInterface for Player<'a> {
     }
 
     // XXX the trait uses a different error type, seems like a mistake
-    async fn set_fullscreen(&self, fullscreen: bool) -> mpris_server::zbus::Result<()> {
+    async fn set_fullscreen(&self, _fullscreen: bool) -> mpris_server::zbus::Result<()> {
         Ok(())
     }
 
@@ -62,11 +68,15 @@ impl<'a> LocalRootInterface for Player<'a> {
     }
 
     async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> {
-        todo!()
+        // We don't support https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html#Method:OpenUri
+        // so keep the list empty
+        Ok(Vec::new())
     }
 
     async fn supported_mime_types(&self) -> fdo::Result<Vec<String>> {
-        todo!()
+        // We don't support https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html#Method:OpenUri
+        // so keep the list empty
+        Ok(Vec::new())
     }
 }
 
@@ -74,11 +84,21 @@ impl<'a> LocalRootInterface for Player<'a> {
 #[async_trait(?Send)]
 impl<'a> LocalPlayerInterface for Player<'a> {
     async fn next(&self) -> fdo::Result<()> {
-        todo!()
+        self.device
+            .media
+            .next(&self.transport_id, self.media_session_id)
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn previous(&self) -> fdo::Result<()> {
-        todo!()
+        self.device
+            .media
+            .prev(&self.transport_id, self.media_session_id)
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn pause(&self) -> fdo::Result<()> {
@@ -95,7 +115,13 @@ impl<'a> LocalPlayerInterface for Player<'a> {
     }
 
     async fn stop(&self) -> fdo::Result<()> {
-        todo!()
+        self.device
+            .media
+            .stop(&self.transport_id, self.media_session_id)
+            .await
+            .map_err(errconvert)?;
+        // TODO: kill self.media_session_id, exit task
+        Ok(())
     }
 
     async fn play(&self) -> fdo::Result<()> {
@@ -109,14 +135,30 @@ impl<'a> LocalPlayerInterface for Player<'a> {
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
         todo!()
+        // https://developers.google.com/cast/docs/reference/web_receiver/cast.framework.messages.SeekRequestData
+        // can also work with relativeTime, but it's not exposed at the moment
     }
 
     async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
-        todo!()
+        // TODO check TrackId matches
+        self.device
+            .media
+            .seek(
+                &self.transport_id,
+                self.media_session_id,
+                Some(mpris_time_to_seek_time(position)),
+                None,
+            )
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
-    async fn open_uri(&self, uri: String) -> fdo::Result<()> {
-        todo!()
+    async fn open_uri(&self, _uri: String) -> fdo::Result<()> {
+        // Is it possible to return something like NoSuchMethod?
+        Err(fdo::Error::NotSupported(
+            "Loading on the fly is not supported".to_owned(),
+        ))
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
@@ -175,7 +217,18 @@ impl<'a> LocalPlayerInterface for Player<'a> {
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
-        todo!()
+        let status = self
+            .device
+            .receiver
+            .get_status()
+            .await
+            .map_err(errconvert)?;
+        let vol = &status.volume;
+        if vol.muted == Some(true) {
+            return Ok(0.);
+        }
+        let vol = vol.level.unwrap();
+        Ok(vol.into())
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
@@ -203,11 +256,14 @@ impl<'a> LocalPlayerInterface for Player<'a> {
     }
 
     async fn can_play(&self) -> fdo::Result<bool> {
-        todo!()
+        // There is always a current track, we don't launch with an empty
+        // tracklist
+        Ok(true)
     }
 
     async fn can_pause(&self) -> fdo::Result<bool> {
-        todo!()
+        // No live streams, everything can be paused
+        Ok(true)
     }
 
     async fn can_seek(&self) -> fdo::Result<bool> {
@@ -215,6 +271,6 @@ impl<'a> LocalPlayerInterface for Player<'a> {
     }
 
     async fn can_control(&self) -> fdo::Result<bool> {
-        todo!()
+        Ok(true)
     }
 }

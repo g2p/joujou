@@ -8,7 +8,8 @@ pub const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
 /// Blocking function that reads device messages,
 /// until the peer closes the connection
-pub async fn sender_loop(device: CastDevice<'_>, media_session_id: i32) {
+/// or until the player is done playing.
+pub async fn sender_loop(device: &CastDevice<'_>, media_session_id: i32) {
     loop {
         match device.receive().await {
             Ok(ChannelMessage::Heartbeat(response)) => {

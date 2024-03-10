@@ -115,7 +115,7 @@ async fn play(
         .load_queue(app.transport_id, app.session_id, &media_queue)
         .await?;
     let media_session_id = status.entries.first().unwrap().media_session_id;
-    cast::sender_loop(device, media_session_id).await;
+    cast::sender_loop(&device, media_session_id).await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;
@@ -158,7 +158,7 @@ async fn listen() -> anyhow::Result<()> {
     device.connection.connect(&app.transport_id).await?;
     println!("Connected to default media receiver {:?}", app);
 
-    // We can act for media status actively:
+    // We can ask for media status actively:
     device.media.get_status(&app.transport_id, None).await?;
 
     // We will also get media status updates on track changes
