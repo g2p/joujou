@@ -121,7 +121,7 @@ async fn play(
         transport_id: app.transport_id,
         media_session_id,
     };
-    let mpris_server = mpris_server::LocalServer::new(&busname, player).await?;
+    let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
     // to close the connection and await that.
     cast::sender_loop(&mpris_server.imp().device, media_session_id).await;

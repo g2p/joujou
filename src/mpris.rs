@@ -2,8 +2,8 @@ use mpris_server::async_trait;
 use mpris_server::zbus;
 use mpris_server::zbus::fdo;
 use mpris_server::{
-    LocalPlayerInterface, LocalRootInterface, LoopStatus, Metadata, PlaybackRate, PlaybackStatus,
-    Time, TrackId, Volume,
+    LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
+    TrackId, Volume,
 };
 use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState};
 
@@ -24,8 +24,8 @@ fn mpris_time_to_seek_time(time: Time) -> f32 {
 }
 
 /// https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
-#[async_trait(?Send)]
-impl<'a> LocalRootInterface for Player<'a> {
+#[async_trait]
+impl<'a> RootInterface for Player<'a> {
     async fn can_raise(&self) -> fdo::Result<bool> {
         Ok(false)
     }
@@ -81,8 +81,8 @@ impl<'a> LocalRootInterface for Player<'a> {
 }
 
 /// https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
-#[async_trait(?Send)]
-impl<'a> LocalPlayerInterface for Player<'a> {
+#[async_trait]
+impl<'a> PlayerInterface for Player<'a> {
     async fn next(&self) -> fdo::Result<()> {
         self.device
             .media
