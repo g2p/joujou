@@ -12,9 +12,9 @@ fn errconvert(err: rust_cast::errors::Error) -> zbus::Error {
 }
 
 pub struct Player<'a> {
-    device: rust_cast::CastDevice<'a>,
-    transport_id: String,
-    media_session_id: i32,
+    pub device: rust_cast::CastDevice<'a>,
+    pub transport_id: String,
+    pub media_session_id: i32,
 }
 
 fn mpris_time_to_seek_time(time: Time) -> f32 {

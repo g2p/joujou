@@ -51,7 +51,7 @@ async fn play(
     // (libc getsockname)?  CastDevice builds the TcpStream
     // but does not expose it.
     let device = rust_cast::CastDevice::connect_without_host_verification(
-        remote_address.as_str(),
+        remote_address.clone(),
         remote_port,
     )
     .await?;
@@ -112,10 +112,19 @@ async fn play(
     };
     let status = device
         .media
-        .load_queue(app.transport_id, app.session_id, &media_queue)
+        .load_queue(&app.transport_id, &app.session_id, &media_queue)
         .await?;
     let media_session_id = status.entries.first().unwrap().media_session_id;
-    cast::sender_loop(&device, media_session_id).await;
+    let busname = format!("com.github.g2p.joujou.u{uuid}");
+    let player = mpris::Player {
+        device,
+        transport_id: app.transport_id,
+        media_session_id,
+    };
+    let mpris_server = mpris_server::LocalServer::new(&busname, player).await?;
+    // XXX mpris-server is lacking a way
+    // to close the connection and await that.
+    cast::sender_loop(&mpris_server.imp().device, media_session_id).await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;
