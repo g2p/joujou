@@ -246,7 +246,12 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
-        todo!()
+        self.device
+            .receiver
+            .set_volume(volume as f32)
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn position(&self) -> fdo::Result<Time> {
