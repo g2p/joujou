@@ -5,6 +5,7 @@ use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
     TrackId, Volume,
 };
+use rust_cast::channels::media::RepeatMode;
 use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState};
 
 fn errconvert(err: rust_cast::errors::Error) -> zbus::Error {
@@ -193,7 +194,20 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
-        todo!()
+        self.device
+            .media
+            .update_queue(
+                &self.transport_id,
+                self.media_session_id,
+                Some(match loop_status {
+                    LoopStatus::None => RepeatMode::Off,
+                    LoopStatus::Track => RepeatMode::Single,
+                    LoopStatus::Playlist => RepeatMode::All,
+                }),
+            )
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
