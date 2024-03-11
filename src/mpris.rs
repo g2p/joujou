@@ -57,7 +57,7 @@ impl<'a> RootInterface for Player<'a> {
     }
 
     async fn has_track_list(&self) -> fdo::Result<bool> {
-        todo!()
+        Ok(false)
     }
 
     async fn identity(&self) -> fdo::Result<String> {
@@ -65,7 +65,8 @@ impl<'a> RootInterface for Player<'a> {
     }
 
     async fn desktop_entry(&self) -> fdo::Result<String> {
-        todo!()
+        //Err(fdo::Error::NotSupported("No desktop entry".to_owned()))
+        Ok(String::new())
     }
 
     async fn supported_uri_schemes(&self) -> fdo::Result<Vec<String>> {
@@ -190,7 +191,23 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        todo!()
+        let status = self
+            .device
+            .media
+            .get_status(&self.transport_id, Some(self.media_session_id))
+            .await
+            .map_err(errconvert)?;
+        // Should have just the one we requested
+        assert_eq!(status.entries.len(), 1);
+        let sentry = &status.entries[0];
+        assert_eq!(sentry.media_session_id, self.media_session_id);
+        Ok(match sentry.repeat_mode {
+            Some(RepeatMode::Off) | None => LoopStatus::None,
+            Some(RepeatMode::All) => LoopStatus::Playlist,
+            Some(RepeatMode::Single) => LoopStatus::Track,
+            // XXX no exact mapping
+            Some(RepeatMode::AllAndShuffle) => LoopStatus::Playlist,
+        })
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use anyhow::Context;
 use rust_cast::channels::heartbeat::HeartbeatResponse;
-use rust_cast::channels::media::{Media, MediaQueue, QueueItem, QueueType, StreamType};
+use rust_cast::channels::media::{Media, MediaQueue, QueueItem, QueueType, RepeatMode, StreamType};
 use rust_cast::channels::receiver::CastDeviceApp;
 use rust_cast::ChannelMessage;
 use tokio::io::AsyncWriteExt;
@@ -109,6 +109,7 @@ async fn play(
             .collect(),
         start_index,
         queue_type: QueueType::Playlist,
+        repeat_mode: RepeatMode::Off,
     };
     let status = device
         .media
