@@ -105,6 +105,7 @@ async fn play(
                         .map(|m| rust_cast::channels::media::Metadata::MusicTrack(m.cast_metadata)),
                     duration: None,
                 },
+                item_id: None,
             })
             .collect(),
         start_index,

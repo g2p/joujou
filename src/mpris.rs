@@ -24,6 +24,10 @@ fn mpris_time_to_seek_time(time: Time) -> f32 {
     ((time.as_micros() as f64) / 1_000_000.) as f32
 }
 
+fn cast_time_to_mpris_time(time: f64) -> Time {
+    Time::from_micros((time * 1_000_000.) as i64)
+}
+
 /// https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
 #[async_trait]
 impl<'a> RootInterface for Player<'a> {
@@ -113,7 +117,10 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn play_pause(&self) -> fdo::Result<()> {
-        todo!()
+        match self.playback_status().await? {
+            PlaybackStatus::Playing => self.pause().await,
+            PlaybackStatus::Paused | PlaybackStatus::Stopped => self.play().await,
+        }
     }
 
     async fn stop(&self) -> fdo::Result<()> {
@@ -228,7 +235,8 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
-        todo!()
+        // XXX
+        Ok(1.)
     }
 
     async fn set_rate(&self, rate: PlaybackRate) -> zbus::Result<()> {
@@ -236,7 +244,8 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn shuffle(&self) -> fdo::Result<bool> {
-        todo!()
+        // XXX
+        Ok(false)
     }
 
     async fn set_shuffle(&self, shuffle: bool) -> zbus::Result<()> {
@@ -244,7 +253,8 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        todo!()
+        // XXX
+        Ok(Metadata::new())
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
@@ -272,23 +282,99 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        todo!()
+        let status = self
+            .device
+            .media
+            .get_status(&self.transport_id, Some(self.media_session_id))
+            .await
+            .map_err(errconvert)?;
+        assert_eq!(status.entries.len(), 1);
+        let sentry = &status.entries[0];
+        assert_eq!(sentry.media_session_id, self.media_session_id);
+        Ok(cast_time_to_mpris_time(
+            sentry.current_time.unwrap_or_default().into(),
+        ))
     }
 
     async fn minimum_rate(&self) -> fdo::Result<PlaybackRate> {
-        todo!()
+        // XXX
+        Ok(1.)
     }
 
     async fn maximum_rate(&self) -> fdo::Result<PlaybackRate> {
-        todo!()
+        // XXX
+        Ok(1.)
     }
 
     async fn can_go_next(&self) -> fdo::Result<bool> {
-        todo!()
+        let status = self
+            .device
+            .media
+            .get_status(&self.transport_id, Some(self.media_session_id))
+            .await
+            .map_err(errconvert)?;
+        assert_eq!(status.entries.len(), 1);
+        let sentry = &status.entries[0];
+        assert_eq!(sentry.media_session_id, self.media_session_id);
+        if let Some(repeat) = sentry.repeat_mode {
+            if repeat != RepeatMode::Off {
+                return Ok(true);
+            }
+        }
+        let Some(ref items) = sentry.items else {
+            // For another app than the default player,
+            // this might be inaccurate, there might
+            // be a queue that isn't exposed to us.
+            return Ok(false);
+        };
+        let Some(current_item_id) = sentry.current_item_id else {
+            return Ok(false);
+        };
+        let Some(pos) = items
+            .iter()
+            .position(|it| it.item_id == Some(current_item_id))
+        else {
+            // We might assert
+            return Ok(false);
+        };
+        if pos + 1 < items.len() {
+            return Ok(true);
+        }
+        return Ok(false);
     }
 
     async fn can_go_previous(&self) -> fdo::Result<bool> {
-        todo!()
+        let status = self
+            .device
+            .media
+            .get_status(&self.transport_id, Some(self.media_session_id))
+            .await
+            .map_err(errconvert)?;
+        assert_eq!(status.entries.len(), 1);
+        let sentry = &status.entries[0];
+        assert_eq!(sentry.media_session_id, self.media_session_id);
+        if let Some(repeat) = sentry.repeat_mode {
+            if repeat != RepeatMode::Off {
+                return Ok(true);
+            }
+        }
+        let Some(ref items) = sentry.items else {
+            // For another app than the default player,
+            // this might be inaccurate, there might
+            // be a queue that isn't exposed to us.
+            return Ok(false);
+        };
+        let Some(current_item_id) = sentry.current_item_id else {
+            return Ok(false);
+        };
+        if let Some(first) = items.first() {
+            if let Some(fid) = first.item_id {
+                if fid != current_item_id && items.len() > 1 {
+                    return Ok(true);
+                }
+            }
+        }
+        return Ok(false);
     }
 
     async fn can_play(&self) -> fdo::Result<bool> {
