@@ -143,9 +143,18 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
-        todo!()
-        // https://developers.google.com/cast/docs/reference/web_receiver/cast.framework.messages.SeekRequestData
-        // can also work with relativeTime, but it's not exposed at the moment
+        self.device
+            .media
+            .seek(
+                &self.transport_id,
+                self.media_session_id,
+                None,
+                Some(mpris_time_to_seek_time(offset)),
+                None,
+            )
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
@@ -156,6 +165,7 @@ impl<'a> PlayerInterface for Player<'a> {
                 &self.transport_id,
                 self.media_session_id,
                 Some(mpris_time_to_seek_time(position)),
+                None,
                 None,
             )
             .await
@@ -389,7 +399,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn can_seek(&self) -> fdo::Result<bool> {
-        todo!()
+        Ok(true)
     }
 
     async fn can_control(&self) -> fdo::Result<bool> {
