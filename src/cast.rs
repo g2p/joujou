@@ -37,7 +37,17 @@ impl<'a> Player<'a> {
     }
 
     fn set_media_status(&self, ms: media::StatusEntry) {
-        self.media_status.store(Arc::new(ms));
+        // Make sure items (queue subset) is set;
+        // many updates don't include it
+        if ms.items.is_some() {
+            self.media_status.store(Arc::new(ms));
+        } else {
+            self.media_status.rcu(|prev| {
+                let mut ms = ms.clone();
+                ms.items = prev.items.clone();
+                ms
+            });
+        }
     }
 
     /// Read device messages and update our state
