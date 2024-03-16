@@ -84,6 +84,7 @@ fn u32_value(tag: &meta::Tag) -> Option<u32> {
 fn convert_metadata(meta: &meta::MetadataRevision) -> Metadata {
     use symphonia::core::meta::StandardTagKey::*;
     let mut cmeta = MusicTrackMediaMetadata::default();
+    // XXX for multi-valued tags, last one will win
     for tag in meta.tags() {
         let Some(stdtag) = tag.std_key else { continue };
         match stdtag {

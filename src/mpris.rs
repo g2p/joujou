@@ -5,8 +5,8 @@ use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
     TrackId, Volume,
 };
-use rust_cast::channels::media::RepeatMode;
-use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState};
+use rust_cast::channels::media::Metadata::MusicTrack;
+use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState, RepeatMode};
 
 use crate::cast::Player;
 
@@ -222,8 +222,25 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        // XXX
-        Ok(Metadata::new())
+        // There is information loss going through the cast metadata format
+        // For multi-valued tags, we would be better off
+        // recognizing the URL and using metadata stored on this side.
+        let ms = self.media_status();
+        let mut md1 = Metadata::new();
+        if let Some(ref media) = ms.media {
+            if let Some(MusicTrack(ref md0)) = media.metadata {
+                md1.set_album(md0.album_name.clone());
+                md1.set_title(md0.title.clone());
+                md1.set_album_artist(md0.album_artist.as_ref().map(|aa| vec![aa]));
+                md1.set_artist(md0.artist.as_ref().map(|a| vec![a]));
+                md1.set_composer(md0.composer.as_ref().map(|c| vec![c]));
+                md1.set_track_number(md0.track_number.map(|n| n.try_into().unwrap()));
+                md1.set_disc_number(md0.disc_number.map(|n| n.try_into().unwrap()));
+                md1.set_art_url(md0.images.first().map(|img| img.url.clone()));
+                md1.set_content_created(md0.release_date.clone());
+            }
+        }
+        Ok(md1)
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
