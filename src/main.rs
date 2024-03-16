@@ -112,21 +112,17 @@ async fn play(
         queue_type: QueueType::Playlist,
         repeat_mode: RepeatMode::Off,
     };
-    let status = device
+    let mut status = device
         .media
         .load_queue(&app.transport_id, &app.session_id, &media_queue)
         .await?;
-    let media_session_id = status.entries.first().unwrap().media_session_id;
+    let media_status = status.entries.remove(0);
     let busname = format!("com.github.g2p.joujou.u{uuid}");
-    let player = mpris::Player {
-        device,
-        transport_id: app.transport_id,
-        media_session_id,
-    };
+    let player = cast::Player::from_status(device, app.transport_id, media_status);
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
     // to close the connection and await that.
-    cast::sender_loop(&mpris_server.imp().device, media_session_id).await;
+    mpris_server.imp().listen_to_receiver().await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;

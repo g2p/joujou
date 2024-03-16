@@ -8,14 +8,10 @@ use mpris_server::{
 use rust_cast::channels::media::RepeatMode;
 use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState};
 
+use crate::cast::Player;
+
 fn errconvert(err: rust_cast::errors::Error) -> zbus::Error {
     zbus::Error::Failure(format!("rust_cast error {err}"))
-}
-
-pub struct Player<'a> {
-    pub device: rust_cast::CastDevice<'a>,
-    pub transport_id: String,
-    pub media_session_id: i32,
 }
 
 fn mpris_time_to_seek_time(time: Time) -> f32 {
@@ -90,29 +86,17 @@ impl<'a> RootInterface for Player<'a> {
 #[async_trait]
 impl<'a> PlayerInterface for Player<'a> {
     async fn next(&self) -> fdo::Result<()> {
-        self.device
-            .media
-            .next(&self.transport_id, self.media_session_id)
-            .await
-            .map_err(errconvert)?;
+        self.next().await.map_err(errconvert)?;
         Ok(())
     }
 
     async fn previous(&self) -> fdo::Result<()> {
-        self.device
-            .media
-            .prev(&self.transport_id, self.media_session_id)
-            .await
-            .map_err(errconvert)?;
+        self.prev().await.map_err(errconvert)?;
         Ok(())
     }
 
     async fn pause(&self) -> fdo::Result<()> {
-        self.device
-            .media
-            .pause(&self.transport_id, self.media_session_id)
-            .await
-            .map_err(errconvert)?;
+        self.pause().await.map_err(errconvert)?;
         Ok(())
     }
 
@@ -121,29 +105,23 @@ impl<'a> PlayerInterface for Player<'a> {
             PlaybackStatus::Playing => self.pause().await,
             PlaybackStatus::Paused | PlaybackStatus::Stopped => self.play().await,
         }
+        .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn stop(&self) -> fdo::Result<()> {
-        self.device
-            .media
-            .stop(&self.transport_id, self.media_session_id)
-            .await
-            .map_err(errconvert)?;
         // TODO: kill self.media_session_id, exit task
+        self.stop().await.map_err(errconvert)?;
         Ok(())
     }
 
     async fn play(&self) -> fdo::Result<()> {
-        self.device
-            .media
-            .play(&self.transport_id, self.media_session_id)
-            .await
-            .map_err(errconvert)?;
+        self.play().await.map_err(errconvert)?;
         Ok(())
     }
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
-        self.device
+        self.receiver
             .media
             .seek(
                 &self.transport_id,
@@ -159,7 +137,8 @@ impl<'a> PlayerInterface for Player<'a> {
 
     async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
         // TODO check TrackId matches
-        self.device
+        log::debug!("set_position TrackId {track_id}");
+        self.receiver
             .media
             .seek(
                 &self.transport_id,
@@ -181,18 +160,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        // We could proactively cache all status messages (for our
-        // media_session_id) as we receive them
-        let status = self
-            .device
-            .media
-            .get_status(&self.transport_id, Some(self.media_session_id))
-            .await
-            .map_err(errconvert)?;
-        // Should have just the one we requested
-        assert_eq!(status.entries.len(), 1);
-        let sentry = &status.entries[0];
-        assert_eq!(sentry.media_session_id, self.media_session_id);
+        let sentry = self.media_status();
         Ok(match sentry.player_state {
             PlayerState::Idle => match sentry.extended_status {
                 Some(ExtendedStatus {
@@ -208,16 +176,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        let status = self
-            .device
-            .media
-            .get_status(&self.transport_id, Some(self.media_session_id))
-            .await
-            .map_err(errconvert)?;
-        // Should have just the one we requested
-        assert_eq!(status.entries.len(), 1);
-        let sentry = &status.entries[0];
-        assert_eq!(sentry.media_session_id, self.media_session_id);
+        let sentry = self.media_status();
         Ok(match sentry.repeat_mode {
             Some(RepeatMode::Off) | None => LoopStatus::None,
             Some(RepeatMode::All) => LoopStatus::Playlist,
@@ -228,7 +187,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
-        self.device
+        self.receiver
             .media
             .update_queue(
                 &self.transport_id,
@@ -269,7 +228,7 @@ impl<'a> PlayerInterface for Player<'a> {
 
     async fn volume(&self) -> fdo::Result<Volume> {
         let status = self
-            .device
+            .receiver
             .receiver
             .get_status()
             .await
@@ -283,7 +242,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
-        self.device
+        self.receiver
             .receiver
             .set_volume(volume as f32)
             .await
@@ -292,15 +251,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        let status = self
-            .device
-            .media
-            .get_status(&self.transport_id, Some(self.media_session_id))
-            .await
-            .map_err(errconvert)?;
-        assert_eq!(status.entries.len(), 1);
-        let sentry = &status.entries[0];
-        assert_eq!(sentry.media_session_id, self.media_session_id);
+        let sentry = self.media_status();
         Ok(cast_time_to_mpris_time(
             sentry.current_time.unwrap_or_default().into(),
         ))
@@ -317,15 +268,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn can_go_next(&self) -> fdo::Result<bool> {
-        let status = self
-            .device
-            .media
-            .get_status(&self.transport_id, Some(self.media_session_id))
-            .await
-            .map_err(errconvert)?;
-        assert_eq!(status.entries.len(), 1);
-        let sentry = &status.entries[0];
-        assert_eq!(sentry.media_session_id, self.media_session_id);
+        let sentry = self.media_status();
         if let Some(repeat) = sentry.repeat_mode {
             if repeat != RepeatMode::Off {
                 return Ok(true);
@@ -354,15 +297,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn can_go_previous(&self) -> fdo::Result<bool> {
-        let status = self
-            .device
-            .media
-            .get_status(&self.transport_id, Some(self.media_session_id))
-            .await
-            .map_err(errconvert)?;
-        assert_eq!(status.entries.len(), 1);
-        let sentry = &status.entries[0];
-        assert_eq!(sentry.media_session_id, self.media_session_id);
+        let sentry = self.media_status();
         if let Some(repeat) = sentry.repeat_mode {
             if repeat != RepeatMode::Off {
                 return Ok(true);
