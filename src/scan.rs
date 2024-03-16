@@ -47,6 +47,8 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
             let Some(ext) = path.extension().and_then(OsStr::to_str) else {
                 continue;
             };
+            let ext = ext.to_ascii_lowercase();
+            let ext = ext.as_str();
             if matches!(ext, "jpg" | "jpeg" | "png") {
                 if let Some(ref c0) = cover {
                     let sc0 = coverscore.get_or_insert_with(|| cover_score(c0));
