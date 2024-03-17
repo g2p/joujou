@@ -13,7 +13,7 @@ use rust_cast::channels::receiver;
 use rust_cast::{CastDevice, ChannelMessage};
 use tokio::sync::Notify;
 
-use crate::mpris::cast_time_to_mpris_time;
+mod mpris;
 
 // I'd like rust_cast to export those constants
 pub const DEFAULT_DESTINATION_ID: &str = "receiver-0";
@@ -46,7 +46,7 @@ impl<'a> Player<'a> {
         }
     }
 
-    pub fn media_status(&self) -> impl Deref<Target = Arc<StatusEntry>> {
+    fn media_status(&self) -> impl Deref<Target = Arc<StatusEntry>> {
         self.media_status.load()
     }
 
@@ -76,7 +76,7 @@ impl<'a> Player<'a> {
         self.media_status_change.notify_one();
     }
 
-    pub fn receiver_status(&self) -> impl Deref<Target = Arc<receiver::Status>> {
+    fn receiver_status(&self) -> impl Deref<Target = Arc<receiver::Status>> {
         self.receiver_status.load()
     }
 
@@ -85,70 +85,57 @@ impl<'a> Player<'a> {
         self.receiver_status_change.notify_one();
     }
 
-    pub async fn next(&self) -> Result<(), rust_cast::errors::Error> {
-        let statent = self
+    async fn next(&self) -> Result<(), rust_cast::errors::Error> {
+        let ms = self
             .receiver
             .media
             .next(&self.transport_id, self.media_session_id)
             .await?;
-        self.set_media_status(statent);
+        self.set_media_status(ms);
         Ok(())
     }
 
-    pub async fn prev(&self) -> Result<(), rust_cast::errors::Error> {
-        let statent = self
+    async fn prev(&self) -> Result<(), rust_cast::errors::Error> {
+        let ms = self
             .receiver
             .media
             .prev(&self.transport_id, self.media_session_id)
             .await?;
-        self.set_media_status(statent);
+        self.set_media_status(ms);
         Ok(())
     }
 
-    pub async fn play(&self) -> Result<(), rust_cast::errors::Error> {
-        let statent = self
+    async fn play(&self) -> Result<(), rust_cast::errors::Error> {
+        let ms = self
             .receiver
             .media
             .play(&self.transport_id, self.media_session_id)
             .await?;
-        self.set_media_status(statent);
+        self.set_media_status(ms);
         Ok(())
     }
 
-    pub async fn pause(&self) -> Result<(), rust_cast::errors::Error> {
-        let statent = self
+    async fn pause(&self) -> Result<(), rust_cast::errors::Error> {
+        let ms = self
             .receiver
             .media
             .pause(&self.transport_id, self.media_session_id)
             .await?;
-        self.set_media_status(statent);
+        self.set_media_status(ms);
         Ok(())
     }
 
-    pub async fn stop(&self) -> Result<(), rust_cast::errors::Error> {
-        let statent = self
+    async fn stop(&self) -> Result<(), rust_cast::errors::Error> {
+        let ms = self
             .receiver
             .media
             .stop(&self.transport_id, self.media_session_id)
             .await?;
-        self.set_media_status(statent);
+        self.set_media_status(ms);
         Ok(())
     }
 
-    pub async fn set_volume(
-        &self,
-        volume: mpris_server::Volume,
-    ) -> Result<(), rust_cast::errors::Error> {
-        // XXX channel::receiver::set_volume drops most of
-        // the RECEIVER_STATUS reply to keep only part of
-        // the volume struct.
-        let _volume = self.receiver.receiver.set_volume(volume as f32).await;
-        // So we follow up with a get_status call
-        self.set_receiver_status(self.receiver.receiver.get_status().await?);
-        Ok(())
-    }
-
-    pub fn playback_status(&self) -> PlaybackStatus {
+    fn playback_status(&self) -> PlaybackStatus {
         let ms = self.media_status();
         match ms.player_state {
             PlayerState::Idle => match ms.extended_status {
@@ -164,7 +151,7 @@ impl<'a> Player<'a> {
         }
     }
 
-    pub fn loop_status(&self) -> mpris_server::LoopStatus {
+    fn loop_status(&self) -> mpris_server::LoopStatus {
         let ms = self.media_status();
         // XXX should we look at ms.repeat_mode or ms.queue_data.repeat_mode?
         match ms.repeat_mode {
@@ -176,7 +163,7 @@ impl<'a> Player<'a> {
         }
     }
 
-    pub fn shuffle_status(&self) -> bool {
+    fn shuffle_status(&self) -> bool {
         let ms = self.media_status();
         if let Some(ref queue_data) = ms.queue_data {
             return queue_data.shuffle;
@@ -184,7 +171,7 @@ impl<'a> Player<'a> {
         false
     }
 
-    pub fn volume(&self) -> mpris_server::Volume {
+    fn volume(&self) -> mpris_server::Volume {
         let ms = self.receiver_status();
         let vol = ms.volume;
         if vol.muted == Some(true) {
@@ -193,7 +180,7 @@ impl<'a> Player<'a> {
         vol.level.unwrap().into()
     }
 
-    pub fn metadata(&self) -> mpris_server::Metadata {
+    fn metadata(&self) -> mpris_server::Metadata {
         // There is information loss going through the cast metadata format
         // For multi-valued tags, we would be better off
         // recognizing the URL and using metadata stored on this side.
@@ -211,12 +198,16 @@ impl<'a> Player<'a> {
                 md1.set_art_url(md0.images.first().map(|img| img.url.clone()));
                 md1.set_content_created(md0.release_date.clone());
             }
-            md1.set_length(media.duration.map(|d| cast_time_to_mpris_time(d.into())));
+            md1.set_length(
+                media
+                    .duration
+                    .map(|d| mpris::cast_time_to_mpris_time(d.into())),
+            );
         }
         md1
     }
 
-    pub fn can_go_next(&self) -> bool {
+    fn can_go_next(&self) -> bool {
         let ms = self.media_status();
         if let Some(repeat) = ms.repeat_mode {
             if repeat != RepeatMode::Off {
@@ -245,7 +236,7 @@ impl<'a> Player<'a> {
         false
     }
 
-    pub fn can_go_previous(&self) -> bool {
+    fn can_go_previous(&self) -> bool {
         let ms = self.media_status();
         if let Some(repeat) = ms.repeat_mode {
             if repeat != RepeatMode::Off {
@@ -348,16 +339,16 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                     Ok(ChannelMessage::Media(response)) => {
                         log::debug!("[Media] {:?}", response);
                         if let MediaResponse::Status(stat) = response {
-                            for statent in stat.entries {
-                                if statent.media_session_id != player.media_session_id {
+                            for ms in stat.entries {
+                                if ms.media_session_id != player.media_session_id {
                                     continue;
                                 }
                                 // The player became idle, and not because it hasn't started yet
                                 // Either it's Finished (ran out of playlist), or the user explicitly stopped it,
                                 // or some fatal error happened.  Either way, time to exit.
-                                if let Some(_reason) = statent.idle_reason {
-                                    assert_eq!(statent.player_state, PlayerState::Idle);
-                                    let Some(ref es) = statent.extended_status else {
+                                if let Some(_reason) = ms.idle_reason {
+                                    assert_eq!(ms.player_state, PlayerState::Idle);
+                                    let Some(ref es) = ms.extended_status else {
                                         // Exit when at the end of the playlist
                                         return;
                                     };
@@ -368,7 +359,7 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                                     }
                                 }
 
-                                player.set_media_status(statent);
+                                player.set_media_status(ms);
                             }
                         }
                     }

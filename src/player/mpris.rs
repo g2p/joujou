@@ -7,7 +7,7 @@ use mpris_server::{
 };
 use rust_cast::channels::media::RepeatMode;
 
-use crate::cast::Player;
+use super::Player;
 
 fn errconvert(err: rust_cast::errors::Error) -> zbus::Error {
     zbus::Error::Failure(format!("rust_cast error {err}"))
@@ -167,7 +167,8 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
-        self.receiver
+        let ms = self
+            .receiver
             .media
             .update_queue(
                 &self.transport_id,
@@ -181,6 +182,7 @@ impl<'a> PlayerInterface for Player<'a> {
             )
             .await
             .map_err(errconvert)?;
+        self.set_media_status(ms);
         Ok(())
     }
 
@@ -200,7 +202,8 @@ impl<'a> PlayerInterface for Player<'a> {
     async fn set_shuffle(&self, shuffle: bool) -> zbus::Result<()> {
         // Will setting this to false restore the original order?
         // Needs testing
-        self.receiver
+        let ms = self
+            .receiver
             .media
             .update_queue(
                 &self.transport_id,
@@ -210,6 +213,7 @@ impl<'a> PlayerInterface for Player<'a> {
             )
             .await
             .map_err(errconvert)?;
+        self.set_media_status(ms);
         Ok(())
     }
 
@@ -222,7 +226,23 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
-        self.set_volume(volume).await.map_err(errconvert)?;
+        // XXX channel::receiver::set_volume drops most of
+        // the RECEIVER_STATUS reply to keep only part of
+        // the volume struct.
+        let _volume = self
+            .receiver
+            .receiver
+            .set_volume(volume as f32)
+            .await
+            .map_err(errconvert)?;
+        // So we follow up with a get_status call
+        self.set_receiver_status(
+            self.receiver
+                .receiver
+                .get_status()
+                .await
+                .map_err(errconvert)?,
+        );
         Ok(())
     }
 

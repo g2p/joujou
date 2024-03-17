@@ -12,12 +12,13 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 
 mod audio;
-mod cast;
 mod cli;
 mod http;
-mod mpris;
 mod net;
+mod player;
 mod scan;
+
+use player::DEFAULT_DESTINATION_ID;
 
 async fn play(
     path: &Path,
@@ -77,7 +78,7 @@ async fn play(
 
     device
         .connection
-        .connect(cast::DEFAULT_DESTINATION_ID.to_string())
+        .connect(DEFAULT_DESTINATION_ID.to_string())
         .await?;
     //device.heartbeat.ping()?;
 
@@ -116,12 +117,13 @@ async fn play(
         .await?;
     let media_status = status.entries.remove(0);
     let receiver_status = device.receiver.get_status().await?;
-    let player = cast::Player::from_status(device, app.transport_id, media_status, receiver_status);
+    let player =
+        player::Player::from_status(device, app.transport_id, media_status, receiver_status);
     let busname = format!("com.github.g2p.joujou.u{uuid}");
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
     // to close the connection and await that.
-    cast::run_player(&mpris_server).await;
+    player::run_player(&mpris_server).await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;
@@ -138,12 +140,12 @@ async fn listen() -> anyhow::Result<()> {
     let device =
         rust_cast::CastDevice::connect_without_host_verification(remote_address, remote_port)
             .await?;
-    println!("Connecting to device and {}", cast::DEFAULT_DESTINATION_ID);
+    println!("Connecting to device and {}", DEFAULT_DESTINATION_ID);
     device
         .connection
-        .connect(cast::DEFAULT_DESTINATION_ID.to_string())
+        .connect(DEFAULT_DESTINATION_ID.to_string())
         .await?;
-    println!("Connected to device and {}", cast::DEFAULT_DESTINATION_ID);
+    println!("Connected to device and {}", DEFAULT_DESTINATION_ID);
 
     println!("Connecting to default media receiver");
     let status = device.receiver.get_status().await?;
@@ -167,7 +169,7 @@ async fn listen() -> anyhow::Result<()> {
     let media_status = status.entries.remove(0);
     assert!(status.entries.is_empty());
     let receiver_status = device.receiver.get_status().await?;
-    let player = cast::Player::from_status(
+    let player = player::Player::from_status(
         device,
         app.transport_id.to_owned(),
         media_status,
@@ -176,7 +178,7 @@ async fn listen() -> anyhow::Result<()> {
     let uuid = uuid::Uuid::new_v4();
     let busname = format!("com.github.g2p.joujou.u{uuid}");
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
-    cast::run_player(&mpris_server).await;
+    player::run_player(&mpris_server).await;
     Ok(())
 }
 
