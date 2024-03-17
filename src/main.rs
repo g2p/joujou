@@ -6,10 +6,8 @@ use std::num::NonZeroU16;
 use std::path::Path;
 
 use anyhow::Context;
-use rust_cast::channels::heartbeat::HeartbeatResponse;
 use rust_cast::channels::media::{Media, MediaQueue, QueueItem, QueueType, RepeatMode, StreamType};
 use rust_cast::channels::receiver::CastDeviceApp;
-use rust_cast::ChannelMessage;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 
@@ -117,8 +115,8 @@ async fn play(
         .load_queue(&app.transport_id, &app.session_id, &media_queue)
         .await?;
     let media_status = status.entries.remove(0);
-    let busname = format!("com.github.g2p.joujou.u{uuid}");
     let player = cast::Player::from_status(device, app.transport_id, media_status);
+    let busname = format!("com.github.g2p.joujou.u{uuid}");
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
     // to close the connection and await that.
@@ -136,11 +134,9 @@ async fn listen() -> anyhow::Result<()> {
     // XXX Could I access the socket and call socket2 local_addr
     // (libc getsockname)?  CastDevice builds the TcpStream
     // but does not expose it.
-    let device = rust_cast::CastDevice::connect_without_host_verification(
-        remote_address.as_str(),
-        remote_port,
-    )
-    .await?;
+    let device =
+        rust_cast::CastDevice::connect_without_host_verification(remote_address, remote_port)
+            .await?;
     println!("Connecting to device and {}", cast::DEFAULT_DESTINATION_ID);
     device
         .connection
@@ -166,26 +162,15 @@ async fn listen() -> anyhow::Result<()> {
     println!("Connected to default media receiver {:?}", app);
 
     // We can ask for media status actively:
-    device.media.get_status(&app.transport_id, None).await?;
-
-    // We will also get media status updates on track changes
-    loop {
-        match device.receive().await {
-            Ok(ChannelMessage::Heartbeat(response)) => {
-                if matches!(response, HeartbeatResponse::Ping) {
-                    device.heartbeat.pong().await.unwrap();
-                }
-            }
-            Ok(ChannelMessage::Connection(response)) => println!("[Connection] {:?}", response),
-            Ok(ChannelMessage::Media(response)) => println!("[Media] {:?}", response),
-            Ok(ChannelMessage::Receiver(response)) => println!("[Receiver] {:?}", response),
-            Ok(ChannelMessage::Raw(response)) => println!(
-                "Support for the following message type is not yet supported: {:?}",
-                response
-            ),
-            Err(error) => println!("Error occurred while receiving message {}", error),
-        }
-    }
+    let mut status = device.media.get_status(&app.transport_id, None).await?;
+    let media_status = status.entries.remove(0);
+    assert!(status.entries.is_empty());
+    let player = cast::Player::from_status(device, app.transport_id.to_owned(), media_status);
+    let uuid = uuid::Uuid::new_v4();
+    let busname = format!("com.github.g2p.joujou.u{uuid}");
+    let mpris_server = mpris_server::Server::new(&busname, player).await?;
+    cast::run_player(&mpris_server).await;
+    Ok(())
 }
 
 #[tokio::main]
