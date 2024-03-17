@@ -9,6 +9,7 @@ use rust_cast::channels::media::Metadata::MusicTrack;
 use rust_cast::channels::media::{
     ExtendedPlayerState, ExtendedStatus, MediaResponse, PlayerState, RepeatMode, StatusEntry,
 };
+use rust_cast::channels::receiver::ReceiverResponse;
 use rust_cast::{CastDevice, ChannelMessage};
 use tokio::sync::Notify;
 
@@ -50,7 +51,7 @@ impl<'a> Player<'a> {
         // Mostly because there's a loading -> playing transition
         // and the second update is abbreviated.
         // TODO: add queue_data as well
-        if ms.items.is_some() && ms.media.is_some() {
+        if ms.items.is_some() && ms.media.is_some() && ms.queue_data.is_some() {
             self.media_status.store(Arc::new(ms));
         } else {
             self.media_status.rcu(|prev| {
@@ -60,6 +61,9 @@ impl<'a> Player<'a> {
                 }
                 if ms.media.is_none() {
                     ms.media = prev.media.clone();
+                }
+                if ms.queue_data.is_none() {
+                    ms.queue_data = prev.queue_data.clone();
                 }
                 ms
             });
@@ -135,6 +139,7 @@ impl<'a> Player<'a> {
 
     pub fn loop_status(&self) -> mpris_server::LoopStatus {
         let ms = self.media_status();
+        // XXX should we look at ms.repeat_mode or ms.queue_data.repeat_mode?
         match ms.repeat_mode {
             Some(RepeatMode::Off) | None => mpris_server::LoopStatus::None,
             Some(RepeatMode::All) => mpris_server::LoopStatus::Playlist,
@@ -142,6 +147,23 @@ impl<'a> Player<'a> {
             // XXX no exact mapping
             Some(RepeatMode::AllAndShuffle) => mpris_server::LoopStatus::Playlist,
         }
+    }
+
+    pub fn shuffle_status(&self) -> bool {
+        let ms = self.media_status();
+        if let Some(ref queue_data) = ms.queue_data {
+            return queue_data.shuffle;
+        }
+        false
+    }
+
+    pub fn volume(&self) -> mpris_server::Volume {
+        let ms = self.media_status();
+        let vol = ms.volume;
+        if vol.muted == Some(true) {
+            return 0.;
+        }
+        vol.level.unwrap().into()
     }
 
     pub fn metadata(&self) -> mpris_server::Metadata {
@@ -234,6 +256,8 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
     let mut metadata = player.metadata();
     let mut can_go_next = player.can_go_next();
     let mut can_go_previous = player.can_go_previous();
+    let mut volume = player.volume();
+    let mut shuffle = player.shuffle_status();
     // Volume is receiver status and needs a different notification
     //let mut volume = player.volume().await;
     loop {
@@ -264,6 +288,16 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                 if can_go_previous != p {
                     can_go_previous = p;
                     props.push(Property::CanGoPrevious(p));
+                }
+                let p = player.volume();
+                if volume != p {
+                    volume = p;
+                    props.push(Property::Volume(p));
+                }
+                let p = player.shuffle_status();
+                if shuffle != p {
+                    shuffle = p;
+                    props.push(Property::Shuffle(p));
                 }
                 if !props.is_empty() {
                     server.properties_changed(props).await.unwrap();
@@ -309,7 +343,18 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                             }
                         }
                     }
-                    Ok(ChannelMessage::Receiver(response)) => log::debug!("[Receiver] {:?}", response),
+                    Ok(ChannelMessage::Receiver(response)) => {
+                        log::debug!("[Receiver] {:?}", response);
+                        if let ReceiverResponse::Status(stat) = response {
+                            // Carry volume inside StatusEntry for convenience
+                            player.media_status.rcu(|ms| {
+                                let mut ms = StatusEntry::clone(ms);
+                                ms.volume = stat.volume;
+                                ms
+                            });
+                            player.media_status_change.notify_one();
+                        }
+                    },
                     Ok(ChannelMessage::Raw(response)) => log::debug!(
                         "Support for the following message type is not yet supported: {:?}",
                         response

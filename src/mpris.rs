@@ -177,6 +177,7 @@ impl<'a> PlayerInterface for Player<'a> {
                     LoopStatus::Track => RepeatMode::Single,
                     LoopStatus::Playlist => RepeatMode::All,
                 }),
+                None,
             )
             .await
             .map_err(errconvert)?;
@@ -188,17 +189,28 @@ impl<'a> PlayerInterface for Player<'a> {
         Ok(1.)
     }
 
-    async fn set_rate(&self, rate: PlaybackRate) -> zbus::Result<()> {
+    async fn set_rate(&self, _rate: PlaybackRate) -> zbus::Result<()> {
         todo!()
     }
 
     async fn shuffle(&self) -> fdo::Result<bool> {
-        // XXX
-        Ok(false)
+        Ok(self.shuffle_status())
     }
 
     async fn set_shuffle(&self, shuffle: bool) -> zbus::Result<()> {
-        todo!()
+        // Will setting this to false restore the original order?
+        // Needs testing
+        self.receiver
+            .media
+            .update_queue(
+                &self.transport_id,
+                self.media_session_id,
+                None,
+                Some(shuffle),
+            )
+            .await
+            .map_err(errconvert)?;
+        Ok(())
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
@@ -206,18 +218,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
-        let status = self
-            .receiver
-            .receiver
-            .get_status()
-            .await
-            .map_err(errconvert)?;
-        let vol = &status.volume;
-        if vol.muted == Some(true) {
-            return Ok(0.);
-        }
-        let vol = vol.level.unwrap();
-        Ok(vol.into())
+        Ok(self.volume())
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
