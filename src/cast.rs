@@ -12,6 +12,8 @@ use rust_cast::channels::media::{
 use rust_cast::{CastDevice, ChannelMessage};
 use tokio::sync::Notify;
 
+use crate::mpris::cast_time_to_mpris_time;
+
 // I'd like rust_cast to export those constants
 pub const DEFAULT_DESTINATION_ID: &str = "receiver-0";
 
@@ -43,8 +45,11 @@ impl<'a> Player<'a> {
     }
 
     fn set_media_status(&self, ms: StatusEntry) {
-        // Make sure items (queue subset) is set;
-        // many updates don't include it
+        // Make sure media and items (queue subset) are set;
+        // many updates don't include them.
+        // Mostly because there's a loading -> playing transition
+        // and the second update is abbreviated.
+        // TODO: add queue_data as well
         if ms.items.is_some() && ms.media.is_some() {
             self.media_status.store(Arc::new(ms));
         } else {
@@ -157,6 +162,7 @@ impl<'a> Player<'a> {
                 md1.set_art_url(md0.images.first().map(|img| img.url.clone()));
                 md1.set_content_created(md0.release_date.clone());
             }
+            md1.set_length(media.duration.map(|d| cast_time_to_mpris_time(d.into())));
         }
         md1
     }

@@ -19,7 +19,7 @@ fn mpris_time_to_seek_time(time: Time) -> f32 {
     ((time.as_micros() as f64) / 1_000_000.) as f32
 }
 
-fn cast_time_to_mpris_time(time: f64) -> Time {
+pub fn cast_time_to_mpris_time(time: f64) -> Time {
     Time::from_micros((time * 1_000_000.) as i64)
 }
 
