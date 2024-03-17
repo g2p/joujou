@@ -9,7 +9,7 @@ use rust_cast::channels::media::Metadata::MusicTrack;
 use rust_cast::channels::media::{
     ExtendedPlayerState, ExtendedStatus, MediaResponse, PlayerState, RepeatMode, StatusEntry,
 };
-use rust_cast::channels::receiver::ReceiverResponse;
+use rust_cast::channels::receiver;
 use rust_cast::{CastDevice, ChannelMessage};
 use tokio::sync::Notify;
 
@@ -24,6 +24,8 @@ pub struct Player<'a> {
     pub media_session_id: i32,
     media_status: ArcSwap<StatusEntry>,
     media_status_change: Notify,
+    receiver_status: ArcSwap<receiver::Status>,
+    receiver_status_change: Notify,
 }
 
 impl<'a> Player<'a> {
@@ -31,6 +33,7 @@ impl<'a> Player<'a> {
         receiver: CastDevice<'a>,
         transport_id: String,
         media_status: StatusEntry,
+        receiver_status: receiver::Status,
     ) -> Self {
         Self {
             receiver,
@@ -38,6 +41,8 @@ impl<'a> Player<'a> {
             media_session_id: media_status.media_session_id,
             media_status: ArcSwap::from_pointee(media_status),
             media_status_change: Notify::new(),
+            receiver_status: ArcSwap::from_pointee(receiver_status),
+            receiver_status_change: Notify::new(),
         }
     }
 
@@ -69,6 +74,15 @@ impl<'a> Player<'a> {
             });
         }
         self.media_status_change.notify_one();
+    }
+
+    pub fn receiver_status(&self) -> impl Deref<Target = Arc<receiver::Status>> {
+        self.receiver_status.load()
+    }
+
+    fn set_receiver_status(&self, rs: receiver::Status) {
+        self.receiver_status.store(rs.into());
+        self.receiver_status_change.notify_one();
     }
 
     pub async fn next(&self) -> Result<(), rust_cast::errors::Error> {
@@ -121,6 +135,19 @@ impl<'a> Player<'a> {
         Ok(())
     }
 
+    pub async fn set_volume(
+        &self,
+        volume: mpris_server::Volume,
+    ) -> Result<(), rust_cast::errors::Error> {
+        // XXX channel::receiver::set_volume drops most of
+        // the RECEIVER_STATUS reply to keep only part of
+        // the volume struct.
+        let _volume = self.receiver.receiver.set_volume(volume as f32).await;
+        // So we follow up with a get_status call
+        self.set_receiver_status(self.receiver.receiver.get_status().await?);
+        Ok(())
+    }
+
     pub fn playback_status(&self) -> PlaybackStatus {
         let ms = self.media_status();
         match ms.player_state {
@@ -158,7 +185,7 @@ impl<'a> Player<'a> {
     }
 
     pub fn volume(&self) -> mpris_server::Volume {
-        let ms = self.media_status();
+        let ms = self.receiver_status();
         let vol = ms.volume;
         if vol.muted == Some(true) {
             return 0.;
@@ -262,6 +289,13 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
     //let mut volume = player.volume().await;
     loop {
         tokio::select! {
+            _ = player.receiver_status_change.notified() => {
+                let p = player.volume();
+                if volume != p {
+                    volume = p;
+                    server.properties_changed([Property::Volume(p)]).await.unwrap();
+                }
+            }
             _ = player.media_status_change.notified() => {
                 let mut props = Vec::new();
                 let p = player.playback_status();
@@ -288,11 +322,6 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                 if can_go_previous != p {
                     can_go_previous = p;
                     props.push(Property::CanGoPrevious(p));
-                }
-                let p = player.volume();
-                if volume != p {
-                    volume = p;
-                    props.push(Property::Volume(p));
                 }
                 let p = player.shuffle_status();
                 if shuffle != p {
@@ -345,14 +374,8 @@ pub async fn run_player(server: &mpris_server::Server<Player<'static>>) {
                     }
                     Ok(ChannelMessage::Receiver(response)) => {
                         log::debug!("[Receiver] {:?}", response);
-                        if let ReceiverResponse::Status(stat) = response {
-                            // Carry volume inside StatusEntry for convenience
-                            player.media_status.rcu(|ms| {
-                                let mut ms = StatusEntry::clone(ms);
-                                ms.volume = stat.volume;
-                                ms
-                            });
-                            player.media_status_change.notify_one();
+                        if let receiver::ReceiverResponse::Status(status) = response {
+                            player.set_receiver_status(status);
                         }
                     },
                     Ok(ChannelMessage::Raw(response)) => log::debug!(

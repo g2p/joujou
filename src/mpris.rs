@@ -222,11 +222,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn set_volume(&self, volume: Volume) -> zbus::Result<()> {
-        self.receiver
-            .receiver
-            .set_volume(volume as f32)
-            .await
-            .map_err(errconvert)?;
+        self.set_volume(volume).await.map_err(errconvert)?;
         Ok(())
     }
 

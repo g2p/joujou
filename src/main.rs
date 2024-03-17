@@ -115,7 +115,8 @@ async fn play(
         .load_queue(&app.transport_id, &app.session_id, &media_queue)
         .await?;
     let media_status = status.entries.remove(0);
-    let player = cast::Player::from_status(device, app.transport_id, media_status);
+    let receiver_status = device.receiver.get_status().await?;
+    let player = cast::Player::from_status(device, app.transport_id, media_status, receiver_status);
     let busname = format!("com.github.g2p.joujou.u{uuid}");
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
@@ -165,7 +166,13 @@ async fn listen() -> anyhow::Result<()> {
     let mut status = device.media.get_status(&app.transport_id, None).await?;
     let media_status = status.entries.remove(0);
     assert!(status.entries.is_empty());
-    let player = cast::Player::from_status(device, app.transport_id.to_owned(), media_status);
+    let receiver_status = device.receiver.get_status().await?;
+    let player = cast::Player::from_status(
+        device,
+        app.transport_id.to_owned(),
+        media_status,
+        receiver_status,
+    );
     let uuid = uuid::Uuid::new_v4();
     let busname = format!("com.github.g2p.joujou.u{uuid}");
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
