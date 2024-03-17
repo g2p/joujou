@@ -5,8 +5,7 @@ use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
     TrackId, Volume,
 };
-use rust_cast::channels::media::Metadata::MusicTrack;
-use rust_cast::channels::media::{ExtendedPlayerState, ExtendedStatus, PlayerState, RepeatMode};
+use rust_cast::channels::media::RepeatMode;
 
 use crate::cast::Player;
 
@@ -101,7 +100,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn play_pause(&self) -> fdo::Result<()> {
-        match self.playback_status().await? {
+        match self.playback_status() {
             PlaybackStatus::Playing => self.pause().await,
             PlaybackStatus::Paused | PlaybackStatus::Stopped => self.play().await,
         }
@@ -160,30 +159,11 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        let sentry = self.media_status();
-        Ok(match sentry.player_state {
-            PlayerState::Idle => match sentry.extended_status {
-                Some(ExtendedStatus {
-                    player_state: ExtendedPlayerState::Loading,
-                    ..
-                }) => PlaybackStatus::Playing,
-                None => PlaybackStatus::Stopped,
-            },
-            PlayerState::Playing => PlaybackStatus::Playing,
-            PlayerState::Buffering => PlaybackStatus::Playing,
-            PlayerState::Paused => PlaybackStatus::Paused,
-        })
+        Ok(self.playback_status())
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        let sentry = self.media_status();
-        Ok(match sentry.repeat_mode {
-            Some(RepeatMode::Off) | None => LoopStatus::None,
-            Some(RepeatMode::All) => LoopStatus::Playlist,
-            Some(RepeatMode::Single) => LoopStatus::Track,
-            // XXX no exact mapping
-            Some(RepeatMode::AllAndShuffle) => LoopStatus::Playlist,
-        })
+        Ok(self.loop_status())
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> zbus::Result<()> {
@@ -222,25 +202,7 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        // There is information loss going through the cast metadata format
-        // For multi-valued tags, we would be better off
-        // recognizing the URL and using metadata stored on this side.
-        let ms = self.media_status();
-        let mut md1 = Metadata::new();
-        if let Some(ref media) = ms.media {
-            if let Some(MusicTrack(ref md0)) = media.metadata {
-                md1.set_album(md0.album_name.clone());
-                md1.set_title(md0.title.clone());
-                md1.set_album_artist(md0.album_artist.as_ref().map(|aa| vec![aa]));
-                md1.set_artist(md0.artist.as_ref().map(|a| vec![a]));
-                md1.set_composer(md0.composer.as_ref().map(|c| vec![c]));
-                md1.set_track_number(md0.track_number.map(|n| n.try_into().unwrap()));
-                md1.set_disc_number(md0.disc_number.map(|n| n.try_into().unwrap()));
-                md1.set_art_url(md0.images.first().map(|img| img.url.clone()));
-                md1.set_content_created(md0.release_date.clone());
-            }
-        }
-        Ok(md1)
+        Ok(self.metadata())
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
@@ -268,9 +230,9 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        let sentry = self.media_status();
+        let ms = self.media_status();
         Ok(cast_time_to_mpris_time(
-            sentry.current_time.unwrap_or_default().into(),
+            ms.current_time.unwrap_or_default().into(),
         ))
     }
 
@@ -285,58 +247,11 @@ impl<'a> PlayerInterface for Player<'a> {
     }
 
     async fn can_go_next(&self) -> fdo::Result<bool> {
-        let sentry = self.media_status();
-        if let Some(repeat) = sentry.repeat_mode {
-            if repeat != RepeatMode::Off {
-                return Ok(true);
-            }
-        }
-        let Some(ref items) = sentry.items else {
-            // For another app than the default player,
-            // this might be inaccurate, there might
-            // be a queue that isn't exposed to us.
-            return Ok(false);
-        };
-        let Some(current_item_id) = sentry.current_item_id else {
-            return Ok(false);
-        };
-        let Some(pos) = items
-            .iter()
-            .position(|it| it.item_id == Some(current_item_id))
-        else {
-            // We might assert
-            return Ok(false);
-        };
-        if pos + 1 < items.len() {
-            return Ok(true);
-        }
-        return Ok(false);
+        Ok(self.can_go_next())
     }
 
     async fn can_go_previous(&self) -> fdo::Result<bool> {
-        let sentry = self.media_status();
-        if let Some(repeat) = sentry.repeat_mode {
-            if repeat != RepeatMode::Off {
-                return Ok(true);
-            }
-        }
-        let Some(ref items) = sentry.items else {
-            // For another app than the default player,
-            // this might be inaccurate, there might
-            // be a queue that isn't exposed to us.
-            return Ok(false);
-        };
-        let Some(current_item_id) = sentry.current_item_id else {
-            return Ok(false);
-        };
-        if let Some(first) = items.first() {
-            if let Some(fid) = first.item_id {
-                if fid != current_item_id && items.len() > 1 {
-                    return Ok(true);
-                }
-            }
-        }
-        return Ok(false);
+        Ok(self.can_go_previous())
     }
 
     async fn can_play(&self) -> fdo::Result<bool> {

@@ -122,7 +122,7 @@ async fn play(
     let mpris_server = mpris_server::Server::new(&busname, player).await?;
     // XXX mpris-server is lacking a way
     // to close the connection and await that.
-    mpris_server.imp().listen_to_receiver().await;
+    cast::run_player(&mpris_server).await;
     log::debug!("Shutting down our HTTP server");
     shutdown_tx.send(()).unwrap();
     join_server.await??;
