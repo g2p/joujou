@@ -141,8 +141,15 @@ impl<'a> Player<'a> {
             PlayerState::Idle => match ms.extended_status {
                 Some(ExtendedStatus {
                     player_state: ExtendedPlayerState::Loading,
+                    media_session_id,
                     ..
-                }) => PlaybackStatus::Playing,
+                }) => {
+                    if media_session_id == Some(self.media_session_id) {
+                        PlaybackStatus::Playing
+                    } else {
+                        PlaybackStatus::Stopped
+                    }
+                }
                 None => PlaybackStatus::Stopped,
             },
             PlayerState::Playing => PlaybackStatus::Playing,
