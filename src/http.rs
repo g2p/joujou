@@ -120,7 +120,7 @@ pub fn make_app(
     let mut default_visual = None;
     for ent in playlist.entries.iter_mut() {
         state.tracks.push(ServedItem {
-            mime_type: ent.mime_type.into(),
+            mime_type: Cow::Borrowed(ent.mime_type),
             contents: ServedData::FileSystem(ent.path.clone()),
         });
         if let Some(ref mut meta) = ent.metadata {
@@ -136,11 +136,11 @@ pub fn make_app(
                     vec![rust_cast::channels::media::Image::new(url.into())];
             } else if let Some(ref cover) = playlist.cover {
                 let default_visual = default_visual.get_or_insert_with(|| {
-                    log::info!("No embedded cover, using {}", cover.display());
+                    log::info!("No embedded cover, using {}", cover.path.display());
                     let i = state.visuals.len();
                     state.visuals.push(ServedItem {
-                        mime_type: "image/jpeg".into(), // XXX
-                        contents: ServedData::FileSystem(cover.clone()),
+                        mime_type: Cow::Borrowed(cover.mime_type),
+                        contents: ServedData::FileSystem(cover.path.clone()),
                     });
                     let mut url = base.clone();
                     url.set_path(&format!("/{uuid}/visual/{i}"));

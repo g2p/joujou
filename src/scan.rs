@@ -5,15 +5,43 @@ use std::path::{Path, PathBuf};
 
 use crate::audio::AudioFile;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoverKind {
+    Jpeg,
+    Png,
+}
+
+impl CoverKind {
+    fn from_ext(ext: &str) -> Option<Self> {
+        match ext {
+            "jpeg" | "jpg" => Some(Self::Jpeg),
+            "png" => Some(Self::Png),
+            _ => None,
+        }
+    }
+
+    const fn mime_type(self) -> &'static str {
+        match self {
+            Self::Jpeg => "image/jpeg",
+            Self::Png => "image/png",
+        }
+    }
+}
+
+pub struct CoverFile {
+    pub path: PathBuf,
+    pub mime_type: &'static str,
+}
+
 pub struct Playlist {
-    pub cover: Option<PathBuf>,
+    pub cover: Option<CoverFile>,
     pub entries: Vec<AudioFile>,
 }
 
 /// List music files, sort them appropriately, build the queue/playlist
 pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<Playlist> {
     let mut entries = Vec::new();
-    let mut cover: Option<PathBuf> = None;
+    let mut cover: Option<CoverFile> = None;
     let mut coverscore = None;
 
     let beets_db = if let Some(beets_db) = beets_db {
@@ -49,17 +77,25 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
             };
             let ext = ext.to_ascii_lowercase();
             let ext = ext.as_str();
-            if matches!(ext, "jpg" | "jpeg" | "png") {
+            if let Some(ckind) = CoverKind::from_ext(ext) {
+                let cover1 = CoverFile {
+                    path: path.clone(),
+                    mime_type: ckind.mime_type(),
+                };
                 if let Some(ref c0) = cover {
-                    let sc0 = coverscore.get_or_insert_with(|| cover_score(c0));
+                    let sc0 = coverscore.get_or_insert_with(|| cover_score(&c0.path));
                     let sc1 = cover_score(&path);
                     if sc1.cmp(sc0) == Ordering::Greater {
-                        log::info!("Preferring cover {} to {}", path.display(), c0.display());
-                        cover = Some(path);
+                        log::info!(
+                            "Preferring cover {} to {}",
+                            path.display(),
+                            c0.path.display()
+                        );
+                        cover = Some(cover1);
                         coverscore = Some(sc1);
                     }
                 } else {
-                    cover = Some(path);
+                    cover = Some(cover1);
                 }
             } else if let Some(af) = AudioFile::load_if_supported(path, beets_db.as_ref())? {
                 entries.push(af);
