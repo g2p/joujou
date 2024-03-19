@@ -17,7 +17,7 @@ log = "0.4.20"
 #local-ip-address = "0.5.7"
 # Maybe consider an alternative, I don't need the channels
 mdns-sd = "0.10.4"
-mpris-server = "0.7.0"
+mpris-server = "0.8"
 natord = "1.0.9"
 rusqlite = "0.31.0"
 rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "async,queue", features = ["thread_safe"] }

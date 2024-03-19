@@ -1,4 +1,3 @@
-use mpris_server::async_trait;
 use mpris_server::zbus;
 use mpris_server::zbus::fdo;
 use mpris_server::{
@@ -24,7 +23,6 @@ pub fn cast_time_to_mpris_time(time: f64) -> Time {
 }
 
 /// https://specifications.freedesktop.org/mpris-spec/latest/Media_Player.html
-#[async_trait]
 impl<'a> RootInterface for Player<'a> {
     async fn can_raise(&self) -> fdo::Result<bool> {
         Ok(false)
@@ -82,7 +80,6 @@ impl<'a> RootInterface for Player<'a> {
 }
 
 /// https://specifications.freedesktop.org/mpris-spec/latest/Player_Interface.html
-#[async_trait]
 impl<'a> PlayerInterface for Player<'a> {
     async fn next(&self) -> fdo::Result<()> {
         self.next().await.map_err(errconvert)?;
