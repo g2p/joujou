@@ -101,23 +101,23 @@ fn play_command() -> OptionParser<Command> {
         path,
     })
     .to_options()
-    .descr("Cast a directory to chromecast audio")
+    .descr("Cast a music directory to a Chromecast device")
 }
 
 fn listen_command() -> OptionParser<Command> {
     bpaf::pure(Command::Listen)
         .to_options()
-        .descr("Listen to events from the chromecast device")
+        .descr("Listen to events from the Chromecast device")
 }
 
 fn parser() -> OptionParser<App> {
     // Subcommands
     let play_cmd = play_command()
         .command("play")
-        .help("Cast a directory to chromecast audio");
+        .help("Cast a music directory to a Chromecast device");
     let listen_cmd = listen_command()
         .command("listen")
-        .help("Listen to events (playback…) from the chromecast device");
+        .help("Listen to events (playback…) from the Chromecast device");
 
     // Common arguments (use a basic-toml conffile at some point)
     let port = bpaf::long("port")
