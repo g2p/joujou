@@ -1,6 +1,6 @@
-# joujou: play a music album on a chromecast
+# joujou: play music files on a chromecast
 
-joujou takes a directory of music files (sorted by file names) and sends
+joujou takes a directory of music files (sorting them by path) and sends
 it to a chromecast for playback.
 
 Playback control (volume control, navigation within the playlist) is
@@ -12,24 +12,44 @@ next to the music files (cover.jpg for example); this heuristic only
 works when all files come from a single album.
 
 joujou serves the files to the chromecast over the local network.
-You may have to whitelist a range of ports that should be connectable
-from your local network range and configure joujou to use them (through
-the --ports flag).  Music files are accessed by the chromecast directly,
-but cover files can be accessed by other devices, for example phones
-used to control playback.
+joujou defaults to listening on a random TCP port, but if you have a
+firewall, you can pass the `--ports start[:end]` flag and configure
+the firewall to allow access from your local network.  Music files are
+accessed by the chromecast directly, but cover files can be accessed by
+other devices on the same network, for example phones used to control
+playback.
 
 Supported codecs are: FLAC, MP3, Vorbis, Opus, AAC.
 Vorbis and Opus can be in Ogg or WebM/Matroska containers, the rest
-use their native container.
+use their native container.  MP3 files should have ID3v2, although
+joujou falls back to ID3v1 if needed.
 
 Supported file extensions: .flac .mp3 .ogg .opus .oga .mka .m4a
 
 This matches the formats a chromecast audio supports, with the exception
-of WAV: metadata charset detection and embedded covers are poorly
-standardized and tricky to support and FLAC is a better choice.
+of WAV due to limited metadata support; use FLAC for lossless files.
 
-Installation is done via cargo.
-Make sure rust is installed, then run:
+## Usage
+
+    joujou play path/to/album
+
+Use
+
+    joujou --help
+    joujou play --help
+
+for futher options.
+
+Currently, there are flags for passing a beets metadata database and
+starting past the first track.
+
+## Installing
+
+Use cargo to install joujou.
+Make sure rust is installed (use [rustup] if in doubt, or look for a
+package providing `cargo`), then run:
 
     cargo install --git https://github.com/g2p/joujou.git
 
+
+[rustup]: https://rustup.rs
