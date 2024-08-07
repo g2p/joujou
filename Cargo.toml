@@ -20,7 +20,7 @@ log = "0.4.20"
 mdns-sd = "0.11"
 mpris-server = "0.8"
 natord = "1.0.9"
-rusqlite = "0.31.0"
+rusqlite = "0.32"
 rust_cast = { git = "https://github.com/g2p/rust-cast.git", branch = "async,queue", features = ["thread_safe"] }
 #rust_cast = { path = "../../azasypkin/rust-cast" }
 symphonia = { version = "0.5.3", default-features = false, features = ["flac", "ogg", "mkv", "mp3", "isomp4"] }
