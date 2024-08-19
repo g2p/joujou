@@ -37,6 +37,7 @@ async fn play<P: AsRef<Path>>(
     };
 
     let mut playlist;
+    // TODO: loop over args, recurse into directories, take files as-is
     if let [path] = paths {
         playlist = scan::dir_to_playlist(path.as_ref(), beets_db.as_ref())?;
         if playlist.entries.is_empty() {
