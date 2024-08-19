@@ -20,16 +20,32 @@ mod scan;
 
 use player::DEFAULT_DESTINATION_ID;
 
-async fn play(
-    path: &Path,
+async fn play<P: AsRef<Path>>(
+    paths: &[P],
     playlist_start: NonZeroU16,
     port: &cli::PortOrRange,
     beets_db: Option<&Path>,
 ) -> anyhow::Result<()> {
-    let mut playlist = scan::dir_to_playlist(path, beets_db)?;
-    if playlist.entries.is_empty() {
-        anyhow::bail!("Found no playable entries");
+    let beets_db = if let Some(beets_db) = beets_db {
+        use rusqlite::OpenFlags;
+        Some(rusqlite::Connection::open_with_flags(
+            beets_db,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?)
+    } else {
+        None
+    };
+
+    let mut playlist;
+    if let [path] = paths {
+        playlist = scan::dir_to_playlist(path.as_ref(), beets_db.as_ref())?;
+        if playlist.entries.is_empty() {
+            anyhow::bail!("Found no playable entries");
+        }
+    } else {
+        playlist = scan::files_to_playlist(paths, beets_db.as_ref())?;
     }
+
     // From 1-based (UI) to 0-based
     let start_index: u16 = playlist_start.get() - 1;
     let entlen = playlist.entries.len();
@@ -189,9 +205,9 @@ async fn main() -> anyhow::Result<()> {
     let app = cli::parse_cli();
     match app.cmd {
         cli::Command::Play {
-            path,
+            paths,
             playlist_start,
-        } => play(&path, playlist_start, &app.port, app.beets_db.as_deref()).await,
+        } => play(&paths, playlist_start, &app.port, app.beets_db.as_deref()).await,
         cli::Command::Listen => listen().await,
     }
 }

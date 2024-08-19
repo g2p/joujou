@@ -15,7 +15,7 @@ use bpaf::{construct, OptionParser, Parser};
 #[derive(Debug, Clone)]
 pub enum Command {
     Play {
-        path: PathBuf,
+        paths: Vec<PathBuf>,
         playlist_start: NonZeroU16,
     },
     Listen,
@@ -94,11 +94,17 @@ fn play_command() -> OptionParser<Command> {
         .help("Start playing at INDEX (not necessarily the first track)")
         .argument("INDEX")
         .fallback(NonZeroU16::MIN);
-    let path = bpaf::positional::<PathBuf>("path").help("Directory path to play");
+    // Should we validate for files/directories early on?
+    // Directories are only handled if there is a single positional arg
+    // If passed a list of files, should we accept covers within them?
+    // In which case they might apply to all later entries?
+    let paths = bpaf::positional::<PathBuf>("path")
+        .help("Paths to play (either a directory or a list of music files)")
+        .some("Need at least one path to play");
 
     construct!(Command::Play {
         playlist_start,
-        path,
+        paths,
     })
     .to_options()
     .descr("Cast a music directory to a Chromecast device")

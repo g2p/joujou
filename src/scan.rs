@@ -39,20 +39,13 @@ pub struct Playlist {
 }
 
 /// List music files, sort them appropriately, build the queue/playlist
-pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<Playlist> {
+pub fn dir_to_playlist(
+    path: &Path,
+    beets_db: Option<&rusqlite::Connection>,
+) -> anyhow::Result<Playlist> {
     let mut entries = Vec::new();
     let mut cover: Option<CoverFile> = None;
     let mut coverscore = None;
-
-    let beets_db = if let Some(beets_db) = beets_db {
-        use rusqlite::OpenFlags;
-        Some(rusqlite::Connection::open_with_flags(
-            beets_db,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_EXRESCODE,
-        )?)
-    } else {
-        None
-    };
 
     for dent in walkdir::WalkDir::new(path)
         .same_file_system(true)
@@ -97,7 +90,7 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
                 } else {
                     cover = Some(cover1);
                 }
-            } else if let Some(af) = AudioFile::load_if_supported(path, beets_db.as_ref())? {
+            } else if let Some(af) = AudioFile::load_if_supported(path, beets_db)? {
                 entries.push(af);
             }
         }
@@ -107,6 +100,19 @@ pub fn dir_to_playlist(path: &Path, beets_db: Option<&Path>) -> anyhow::Result<P
             .then_with(|| a.path.cmp(&b.path))
     });
     Ok(Playlist { cover, entries })
+}
+
+pub fn files_to_playlist(
+    paths: &[impl AsRef<Path>],
+    beets_db: Option<&rusqlite::Connection>,
+) -> anyhow::Result<Playlist> {
+    Ok(Playlist {
+        cover: None,
+        entries: paths
+            .iter()
+            .map(|path| AudioFile::load(path.as_ref().to_owned(), beets_db))
+            .collect::<Result<_, _>>()?,
+    })
 }
 
 fn cover_score(path: &Path) -> impl Ord {

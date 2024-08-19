@@ -28,6 +28,14 @@ pub struct AudioFile {
 }
 
 impl AudioFile {
+    pub fn load(path: PathBuf, beets_db: Option<&rusqlite::Connection>) -> anyhow::Result<Self> {
+        if let Some(r) = Self::load_if_supported(path, beets_db)? {
+            Ok(r)
+        } else {
+            Err(symphonia::core::errors::Error::Unsupported("Not a known extension").into())
+        }
+    }
+
     /// Load known audio files (based on extension)
     /// Ok(None) if not a known extension
     /// Err if a known extension but parsing failed
