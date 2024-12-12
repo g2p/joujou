@@ -128,7 +128,7 @@ enum ContainerKind {
 
 impl ContainerKind {
     fn from_ext(ext: &str) -> Option<Self> {
-        match ext {
+        match &*ext.to_ascii_lowercase() {
             "flac" => Some(Self::Flac),
             "ogg" | "oga" | "opus" => Some(Self::Ogg),
             "mka" => Some(Self::Matroska),
