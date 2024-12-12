@@ -183,6 +183,9 @@ async fn listen() -> anyhow::Result<()> {
 
     // We can ask for media status actively:
     let mut status = device.media.get_status(&app.transport_id, None).await?;
+    if status.entries.is_empty() {
+        return Err(anyhow::anyhow!("Media receiver is not currently playing"));
+    }
     let media_status = status.entries.remove(0);
     assert!(status.entries.is_empty());
     let receiver_status = device.receiver.get_status().await?;
